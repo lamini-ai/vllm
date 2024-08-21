@@ -1,4 +1,4 @@
-name: ci
+name: build-image
 
 on:
   push:
@@ -25,3 +25,4 @@ jobs:
         with:
           push: true
           tags: lamini-ai/vllm-rocm:latest
+          file: Dockerfile.rocm
