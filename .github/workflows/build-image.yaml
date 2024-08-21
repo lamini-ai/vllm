@@ -27,6 +27,7 @@ jobs:
         name: Build and push
         uses: depot/build-push-action@v1
         with:
+          token: ${{ secrets.DEPOT_TOKEN }}
           push: true
           tags: lamini-ai/vllm-rocm:latest
           file: Dockerfile.rocm
