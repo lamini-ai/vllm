@@ -29,5 +29,5 @@ jobs:
         with:
           token: ${{ secrets.DEPOT_TOKEN }}
           push: true
-          tags: lamini-ai/vllm-rocm:latest
+          tags: powerml/vllm-rocm:latest
           file: Dockerfile.rocm
