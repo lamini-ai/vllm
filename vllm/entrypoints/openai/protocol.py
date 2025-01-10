@@ -567,6 +567,10 @@ class ChatCompletionRequest(OpenAIBaseModel):
 
 
 class CompletionRequest(OpenAIBaseModel):
+    ## Start custom Lamini code ##
+    lora_request: Optional['LoadLoraAdapterRequest'] # This is a forward reference to LoadLoraAdapterRequest since it's defined later in this file
+    ## End custom Lamini code ##
+
     # Ordered by official OpenAI API documentation
     # https://platform.openai.com/docs/api-reference/completions/create
     model: str
