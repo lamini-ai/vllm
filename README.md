@@ -5,9 +5,9 @@ This is a fork of the vLLM project for use with Lamini.
 
 ## Naming
 For image tags and branch names, we use the following naming convention:
-`<vLLM_VERSION>-<LAMINI_VERSION>`
+`lamini-<vLLM_VERSION>`
 
-e.g. `v0.6.5-000`, `v0.6.5-001`, `v0.6.5-002`, etc.
+e.g. `lamini-v0.6.5`, `lamini-v0.6.6`, etc.
 
 ## Building the Docker image
 
