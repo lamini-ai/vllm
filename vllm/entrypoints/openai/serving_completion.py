@@ -92,6 +92,17 @@ class OpenAIServingCompletion(OpenAIServing):
         if raw_request:
             raw_request.state.request_metadata = request_metadata
 
+        ## Start custom Lamini code ##
+        if request.lora_request is not None:
+            logger.info("[Lamini] Completion request has LoRA request: %s", request.lora_request)
+            logger.info("[Lamini] Loading LoRA adapter...")
+            from vllm.entrypoints.openai.api_server import load_lora_adapter
+            await load_lora_adapter(request.lora_request, raw_request)
+            logger.info("[Lamini] LoRA adapter loaded")
+            logger.info("[Lamini] Set model to LoRA name: %s", request.lora_request.lora_name)
+            request.model = request.lora_request.lora_name
+        ## End custom Lamini code ##
+
         try:
             (
                 lora_request,
@@ -227,6 +238,13 @@ class OpenAIServingCompletion(OpenAIServing):
 
             return fake_stream_generator()
 
+        ## Start custom Lamini code ##
+        if request.lora_request is not None:
+            logger.info("[Lamini] Completion request completed, unloading LoRA adapter...: %s", request.lora_request)
+            from vllm.entrypoints.openai.api_server import unload_lora_adapter
+            await unload_lora_adapter(request.lora_request, raw_request)
+            logger.info("[Lamini] LoRA adapter unloaded")
+        ## End custom Lamini code ##
         return response
 
     async def completion_stream_generator(
