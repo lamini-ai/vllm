@@ -1,65 +1,7 @@
 <!-- Start custom Lamini code -->
 # Lamini vLLM
 
-This is a fork of the vLLM project for use with Lamini.
-
-## Naming
-For image tags and branch names, we use the following naming convention:
-`lamini-<vLLM_VERSION>`
-
-e.g. `lamini-v0.6.5`, `lamini-v0.6.6`, etc.
-
-## Building the Docker image
-
-### RoCM
-
-```bash
-sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm -t powerml/inference-engine-amd:<INSERT_TAG> .
-```
-
-<details>
-<summary>Push the image to Docker Hub</summary>
-If you want to push the image to Docker Hub, you can use the following commands:
-
-```bash
-docker login
-docker push powerml/inference-engine-amd:<INSERT_TAG>
-```
-
-</details>
-
-### Nvidia
-
-Building the vLLM Docker image with Nvidia takes ~1 hour.
-
-```bash
-sudo DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag powerml/inference-engine-nvidia:<INSERT_TAG>
-```
-
-If you are running on a more powerful machine, you can increase the number of jobs and threads according to the number of CPU cores on your machine.
-
-```bash
-# To get number of CPU cores
-$ lscpu
-# or
-$ ncpus
-
-# Build the Docker image with more jobs and threads
-$ sudo DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag powerml/inference-engine-nvidia:<INSERT_TAG> --build-arg max_jobs=<LESS_THAN_OR_EQUAL_TO_CPU_CORES> --build-arg nvcc_threads=8
-```
-
-If you run into a vLLM image size error, you can disable the wheel check with `--build-arg RUN_WHEEL_CHECK=false` and run the build command again.
-
-<details>
-<summary>Push the image to Docker Hub</summary>
-If you want to push the image to Docker Hub, you can use the following commands:
-
-```bash
-docker login
-docker push powerml/inference-engine-nvidia:<INSERT_TAG>
-```
-
-</details>
+This is a fork of the vLLM project for use with Lamini. Check [the Lamini README](lamini/README.md) for more information.
 
 <!-- End custom Lamini code -->
 
