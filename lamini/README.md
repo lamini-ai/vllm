@@ -14,6 +14,25 @@ For image tags, we use the following naming convention:
 
 e.g. `v0.6.5-000`, `v0.6.5-001`, `v0.6.5-002`, etc.
 
+## Updating from upstream
+On the latest lamini branch, checkout one for the new version (this will keep all lamini commits)
+
+e.g. `git checkout -b lamini-v0.7.2`
+
+```bash
+# Fetch upstream tags
+$ git fetch upstream --tags
+
+# Rebase
+$ git rebase v0.7.2
+
+# Push
+git push --set-upstream origin lamini-v0.7.2
+```
+
+Finally, update the default branch in the repo settings to the latest version.
+<img width="852" alt="Screenshot 2025-02-07 at 6 44 44 PM" src="https://github.com/user-attachments/assets/031cc358-b501-4f98-afd0-9d3801e9a5be" />
+
 ## Github Actions
 
 Github Actions have been disabled for this repo to avoid triggering vLLM's workflows. They can be re-enabled in the repo settings.
