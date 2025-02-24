@@ -42,7 +42,7 @@ Github Actions have been disabled for this repo to avoid triggering vLLM's workf
 ### RoCM
 
 ```bash
-sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm -t powerml/inference-engine-amd:<INSERT_TAG> .
+sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm -t powerml/inference-engine-amd:<INSERT_TAG> . --platform linux/x86_64
 ```
 
 <details>
@@ -61,7 +61,7 @@ docker push powerml/inference-engine-amd:<INSERT_TAG>
 Building the vLLM Docker image with Nvidia takes ~1 hour.
 
 ```bash
-sudo DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag powerml/inference-engine-nvidia:<INSERT_TAG>
+sudo DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag powerml/inference-engine-nvidia:<INSERT_TAG> --platform linux/x86_64
 ```
 
 If you are running on a more powerful machine, you can increase the number of jobs and threads according to the number of CPU cores on your machine.
@@ -77,6 +77,8 @@ $ sudo DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag powerml/infer
 ```
 
 If you run into a vLLM image size error, you can disable the wheel check with `--build-arg RUN_WHEEL_CHECK=false` and run the build command again.
+
+If you run into a `ERROR: failed to solve: ResourceExhausted` error, ... (TBD, still being debugged)
 
 <details>
 <summary>Push the image to Docker Hub</summary>
