@@ -94,7 +94,7 @@ class OpenAIServingCompletion(OpenAIServing):
             raw_request.state.request_metadata = request_metadata
 
         ## Start custom Lamini code ##
-        if request.lora_request is not None:
+        if request.lora_request is not None and not request.stream: # Support for non-streaming requests only for now, streaming requests would need more complicated unloading logic
             logger.info("[Lamini] Completion request has LoRA request: %s", request.lora_request)
             logger.info("[Lamini] Loading LoRA adapter...")
             from vllm.entrypoints.openai.api_server import load_lora_adapter
