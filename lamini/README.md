@@ -10,7 +10,7 @@ For branch names, we use the following naming convention:
 e.g. `lamini-v0.6.5`, `lamini-v0.6.6`, etc.
 
 For image tags, we use the following naming convention:
-`<vLLM_VERSION>-<LAMINI_VERSION>`
+`<vLLM_VERSION>-<LAMINI_VERSION>`. Please create a release (https://github.com/lamini-ai/vllm/releases) to match new image tags.
 
 e.g. `v0.6.5-000`, `v0.6.5-001`, `v0.6.5-002`, etc.
 
