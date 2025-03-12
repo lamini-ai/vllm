@@ -132,6 +132,16 @@ class OpenAIServingChat(OpenAIServing):
         if self.engine_client.errored:
             raise self.engine_client.dead_error
 
+        ## Start custom Lamini code ##
+        if request.lora_request is not None and not request.stream: # Support for non-streaming requests only for now, streaming requests would need more complicated unloading logic
+            logger.info("[Lamini] Completion request has LoRA request: %s", request.lora_request)
+            logger.info("[Lamini] Loading LoRA adapter...")
+            from vllm.entrypoints.openai.api_server import load_lora_adapter
+            await load_lora_adapter(request.lora_request, raw_request)
+            logger.info("[Lamini] LoRA adapter loaded")
+            logger.info("[Lamini] Set model to LoRA name: %s", request.lora_request.lora_name)
+            request.model = request.lora_request.lora_name
+        ## End custom Lamini code ##
         try:
             (
                 lora_request,
@@ -260,9 +270,19 @@ class OpenAIServingChat(OpenAIServing):
                 conversation, tokenizer, request_metadata)
 
         try:
-            return await self.chat_completion_full_generator(
+            ## Start modified Lamini code ##
+            response = await self.chat_completion_full_generator(
                 request, result_generator, request_id, model_name,
                 conversation, tokenizer, request_metadata)
+            ## End modified Lamini code ##
+            ## Start custom Lamini code ##
+            if request.lora_request is not None:
+                logger.info("[Lamini] Completion request completed, unloading LoRA adapter...: %s", request.lora_request)
+                from vllm.entrypoints.openai.api_server import unload_lora_adapter
+                await unload_lora_adapter(request.lora_request, raw_request)
+                logger.info("[Lamini] LoRA adapter unloaded")
+            ## End custom Lamini code ##
+            return response
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
             return self.create_error_response(str(e))
