@@ -230,6 +230,10 @@ def get_logits_processors(processors: Optional[LogitsProcessors],
 
 
 class ChatCompletionRequest(OpenAIBaseModel):
+    ## Start custom Lamini code ##
+    lora_request: Optional['LoadLoraAdapterRequest'] = None # This is a forward reference to LoadLoraAdapterRequest since it's defined later in this file
+    ## End custom Lamini code ##
+
     # Ordered by official OpenAI API documentation
     # https://platform.openai.com/docs/api-reference/chat/create
     messages: list[ChatCompletionMessageParam]
