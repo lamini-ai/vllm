@@ -32,6 +32,8 @@ from vllm.model_executor.models.module_mapping import MultiModelKeys
 from vllm.model_executor.models.utils import PPMissingLayer, WeightsMapper
 from vllm.utils import is_pin_memory_available
 
+from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
+
 logger = init_logger(__name__)
 
 _GLOBAL_LORA_ID = 0
@@ -193,7 +195,7 @@ class LoRAModel(AdapterModel):
         weights_mapper: Optional[WeightsMapper] = None,
     ) -> "LoRAModel":
         """Create a LoRAModel from a local checkpoint.
-        
+
         Args:
             lora_dir: The local path that has lora data.
             expected_lora_modules: Name of modules that are expected to be
@@ -371,38 +373,39 @@ class LoRAModelManager(AdapterModelManager):
         lora_id: int,
     ) -> bool:
         """Move LoRA into a GPU buffer to be used in the forward pass."""
-        if lora_id in self._active_adapters:
-            return False
-        first_free_slot = next(
-            ((i, lora_id) for i, lora_id in enumerate(self.lora_index_to_id)
-             if lora_id is None), None)
-        if first_free_slot is None:
-            raise ValueError("No free lora slots")
-        index, _ = first_free_slot
-        self._active_adapters[lora_id] = None
-        lora_model = self._registered_adapters[lora_id]
-        logger.debug("Activating LoRA. int id: %d, slot index: %d",
-                     lora_model.id, index)
-        self.lora_index_to_id[index] = lora_model.id
-        for module_name, module in self.modules.items():
-            module_lora = lora_model.get_lora(module_name)
-            if module_lora:
-                module_lora.optimize()
-                # Bias is not explicitly enabled with the flag enable_lora_bias.
-                bias = module_lora.bias
-                if ((torch.is_tensor(bias) or
-                     (isinstance(bias, Sequence) and any(b is not None
-                                                         for b in bias)))
-                        and not self.lora_config.bias_enabled):
-                    module_lora.bias = None
-                    raise ValueError(
-                        f"Adapter bias cannot be used for {module_name}"
-                        " without --enable-lora-bias.")
-                module.set_lora(index, module_lora.lora_a, module_lora.lora_b,
-                                module_lora.embeddings_tensor,
-                                module_lora.bias)
-            else:
-                module.reset_lora(index)
+        load_mome_model_for_inference(self.model, self._registered_adapters[lora_id].lora_dir)
+        # if lora_id in self._active_adapters:
+        #     return False
+        # first_free_slot = next(
+        #     ((i, lora_id) for i, lora_id in enumerate(self.lora_index_to_id)
+        #      if lora_id is None), None)
+        # if first_free_slot is None:
+        #     raise ValueError("No free lora slots")
+        # index, _ = first_free_slot
+        # self._active_adapters[lora_id] = None
+        # lora_model = self._registered_adapters[lora_id]
+        # logger.debug("Activating LoRA. int id: %d, slot index: %d",
+        #              lora_model.id, index)
+        # self.lora_index_to_id[index] = lora_model.id
+        # for module_name, module in self.modules.items():
+        #     module_lora = lora_model.get_lora(module_name)
+        #     if module_lora:
+        #         module_lora.optimize()
+        #         # Bias is not explicitly enabled with the flag enable_lora_bias.
+        #         bias = module_lora.bias
+        #         if ((torch.is_tensor(bias) or
+        #              (isinstance(bias, Sequence) and any(b is not None
+        #                                                  for b in bias)))
+        #                 and not self.lora_config.bias_enabled):
+        #             module_lora.bias = None
+        #             raise ValueError(
+        #                 f"Adapter bias cannot be used for {module_name}"
+        #                 " without --enable-lora-bias.")
+        #         module.set_lora(index, module_lora.lora_a, module_lora.lora_b,
+        #                         module_lora.embeddings_tensor,
+        #                         module_lora.bias)
+        #     else:
+        #         module.reset_lora(index)
         return True
 
     def _deactivate_adapter(self, lora_id: int):
