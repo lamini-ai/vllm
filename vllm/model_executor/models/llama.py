@@ -81,6 +81,14 @@ class LlamaMLP(nn.Module):
             quant_config=quant_config,
             prefix=f"{prefix}.down_proj",
         )
+        self.c_proj = RowParallelLinear(
+            input_size=intermediate_size,
+            output_size=hidden_size,
+            bias=bias,
+            quant_config=quant_config,
+            prefix=f"{prefix}.c_proj",
+        )
+
         if hidden_act != "silu":
             raise ValueError(f"Unsupported activation: {hidden_act}. "
                              "Only silu is supported for now.")
@@ -89,6 +97,7 @@ class LlamaMLP(nn.Module):
     def forward(self, x):
         x, _ = self.gate_up_proj(x)
         x = self.act_fn(x)
+        x, _ = self.c_proj(x)
         x, _ = self.down_proj(x)
         return x
 
@@ -450,7 +459,7 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
 
     # LoRA specific attributes
     supported_lora_modules = [
-        "qkv_proj", "o_proj", "gate_up_proj", "down_proj", "embed_tokens",
+        "qkv_proj", "o_proj", "c_proj", "gate_up_proj", "down_proj", "embed_tokens",
         "lm_head"
     ]
     embedding_modules = {
