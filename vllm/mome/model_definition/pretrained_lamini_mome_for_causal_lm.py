@@ -1,4 +1,4 @@
-import logging
+from vllm.logger import init_logger
 import os
 from typing import Optional, Tuple, Union
 
@@ -28,7 +28,7 @@ from transformers import MistralConfig, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import PushToHubMixin
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 
 def load_mome_model_for_inference(base_model, path):
@@ -81,6 +81,7 @@ class PretrainedLaminiMoMEForCausalLM(PushToHubMixin, torch.nn.Module):
 
     def __init__(self, base_model: PreTrainedModel, config: MoMEConfig):
         super().__init__()
+        base_model.name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
         logger.debug(
             f"PretrainedLaminiMoMEForCausalLM name_or_path {base_model.name_or_path}"
         )
