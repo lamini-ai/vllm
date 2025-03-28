@@ -39,3 +39,4 @@ depyf==0.18.0 # required for profiling and debugging with compilation config
 cloudpickle # allows pickling lambda functions in model_executor/models/registry.py
 
 faiss-cpu # [Lamini] required for MoME models
+sentence-transformers
