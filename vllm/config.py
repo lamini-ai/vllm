@@ -2086,6 +2086,25 @@ class SpeculativeConfig:
 
 
 @dataclass
+class MoMEConfig:
+    max_mome_rank: int
+    max_momes: int
+    fully_sharded_momes: bool = False
+    max_cpu_momes: Optional[int] = None
+
+    # The type of MoME model.
+    mome_type: str
+    # The task type of the MoME model.
+    task_type: str
+    # Inner dimension of lora adapter.
+    r_value: int
+    # The block size to train over.
+    sequence_length: int
+    # Number of nearest neighbors to consider.
+    index_k: int
+    
+
+@dataclass
 class LoRAConfig:
     max_lora_rank: int
     max_loras: int
