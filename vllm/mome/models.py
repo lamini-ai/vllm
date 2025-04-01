@@ -27,10 +27,11 @@ def get_mome_id():
 
 class MoMEModel(AdapterModel):
     """A MoME tuned model."""
-    def __init__(self,
-                 mome_model_id: str,
-                 rank: int,
-                 ) -> None:
+    def __init__(
+            self,
+            mome_model_id: str,
+            rank: int,
+            ) -> None:
         """
         Args:
             mome_model_id: the id (model name) of the MoME model.
@@ -42,13 +43,22 @@ class MoMEModel(AdapterModel):
             > 0), f"a valid mome id should be greater than 0, got {self.id}"
         self.rank = rank
 
+    def clone(self, mome_model_id: int) -> "MoMEModel":
+        """Return a copy of the object with different ids.
+
+        Will share the underlying tensors."""
+        return self.__class__(
+            mome_model_id,
+            rank=self.rank,
+        )
 
     @classmethod
     def from_local_checkpoint(cls,
-                              mome_dir: str,
-                              mome_model_id: str,
-                              device: str = "cuda",
-                              ) -> "MoMEModel":
+                            mome_dir: str,
+                            peft_helper: Any,
+                            mome_model_id: str,
+                            device: str = "cuda",
+                            ) -> "MoMEModel":
         """Create a MoMEModel from a local checkpoint.
 
         Args:
@@ -77,7 +87,9 @@ class MoMEModelManager(AdapterModelManager):
 
         super().__init__(model)
         self.model = model
+        self.modules: Dict[str, Any] = {}
         self._last_mapping: Optional[MoMEMapping] = None
+        self._create_mome_modules()
         self.model.mome_manager = self
         self.adapter_type = 'MoME'
 
@@ -126,14 +138,49 @@ class MoMEModelManager(AdapterModelManager):
     def _set_adapter_mapping(self, mapping: MoMEMapping) -> None:
         pass
 
-    # def _create_mome_modules(self):
-    #     for module_name, module in self.model.named_modules(
-    #             remove_duplicate=False):
-    #         pass
+    def _create_mome_modules(self):
+        for module_name, module in self.model.named_modules(remove_duplicate=False):
+            pass
+            # if not self._match_target_modules(module_name):
+            #     continue
+            
+            # # 1. Normal MOME injection
+            # if "mlp" in module_name:
+            #     # add_mome_adaptors_to_mlp_layer
+            #     new_module = replace_submodule(
+            #         self.model, 
+            #         module_name, 
+            #         from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+            #     )
+            
+            # # 2. Extra adapter for head
+            # elif "lm_head" in module_name:
+            #     new_module = replace_submodule(
+            #         self.model,
+            #         module_name,
+            #         from_layer_logits_processor(module, self.mome_slots, self.mome_config, self.model.config)
+            #     )
+            
+            # # 3. Standard MoME adapter
+            # else:
+            #     new_module = replace_submodule(
+            #         self.model,
+            #         module_name,
+            #         from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+            #     )
 
-    # def register_module(self, module_name: str, module):
-    #     assert isinstance(module, AttentionLayerWithMoME)
-    #     self.modules[module_name] = module
+            # # set index / embeddings
+            # if hasattr(new_module, "set_index"):
+            #     new_module.set_index(self.lamini_index)
+            # if hasattr(new_module, "set_embeddings"):
+            #     new_module.set_embeddings(self.embeddings)
+
+            # self.register_module(module_name, new_module)
+            # # All lora layers share the same punica_wrapper based on reference.
+            # new_module.set_mapping(self.punica_wrapper)
+
+    def register_module(self, module_name: str, module: Any):
+        self.modules[module_name] = module
 
     def set_adapter_mapping(self, mapping: MoMEMapping) -> None:
         self._last_mapping = set_adapter_mapping(mapping, self._last_mapping,
@@ -155,7 +202,7 @@ class MoMEModelManager(AdapterModelManager):
     def list_adapters(self) -> Dict[int, Any]:
         return list_adapters(self._registered_adapters)
 
-    def pin_adapter(self, lora_id: int) -> bool:
+    def pin_adapter(self, mome_id: int) -> bool:
         """Pin a MoMEModel in the manager cache."""
         raise NotImplementedError(
             "Pinning is not supported in MoMEModelManager.")

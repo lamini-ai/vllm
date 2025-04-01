@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: Apache-2.0
+
+from contextlib import contextmanager
+from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
+
+import torch
+
+from vllm.adapter_commons.utils import (add_adapter_worker,
+                                        apply_adapters_worker,
+                                        list_adapters_worker,
+                                        set_active_adapters_worker)
+from vllm.adapter_commons.worker_manager import AbstractWorkerManager
+from vllm.config import MoMEConfig
+from vllm.logger import init_logger
+from vllm.mome.models import (MoMEModel, MoMEModelManager,
+                              create_mome_manager)
+from vllm.mome.request import MoMERequest
+from vllm.lora.utils import get_adapter_absolute_path
+
+logger = init_logger(__name__)
+
+
+class WorkerMoMEManager(AbstractWorkerManager):
+    """WorkerMoMEManager that manages MoME models on the worker side.
+
+    Every request, the requested MoMEs will be loaded (unless they are already
+    loaded), and every other MoME will be unloaded."""
+
+    _manager_cls: Type[MoMEModelManager] = MoMEModelManager
+
+    def __init__(
+        self,
+        mome_config: MoMEConfig,
+        device: torch.device,
+        mome_model_cls: Type[MoMEModel] = MoMEModel,
+        max_position_embeddings: Optional[int] = None,
+    ):
+        self._mome_model_cls = mome_model_cls
+        self._cached_dummy_mome: Union[None, Literal[False], MoMEModel] = False
+        self.mome_config = mome_config
+        self.max_position_embeddings = max_position_embeddings
+        super().__init__(device)
+        # Lazily initialized by create_mome_manager.
+        self._adapter_manager: MoMEModelManager
+
+    @contextmanager
+    def dummy_mome_cache(self):
+        """Use this context manager to reuse the dummy mome model
+        to avoid creating it repeatedly."""
+        self._cached_dummy_mome = None
+        yield
+        self._cached_dummy_mome = False
+
+    @property
+    def is_enabled(self) -> bool:
+        return True
+
+    def create_mome_manager(
+        self,
+        model: torch.nn.Module,
+    ) -> Any:
+        mome_manager = create_mome_manager(
+            model,
+            mome_config=self.mome_config,
+            device=self.device,
+            mome_manager_cls=self._manager_cls,
+        )
+        self._adapter_manager = mome_manager
+        return mome_manager.model
+
+    def _load_adapter(self, mome_request: MoMERequest) -> MoMEModel:
+        try:
+
+            expected_mome_modules = list(set(expected_mome_modules))
+            mome_path = get_adapter_absolute_path(mome_request.mome_path)
+
+            peft_helper = PEFTHelper.from_local_dir(mome_path)
+
+            # Validates the MoME configuration against requirements before
+            # loading weights, throwing an exception if validation fails.
+            peft_helper.validate_legal(self.mome_config)
+
+            mome = self._mome_model_cls.from_local_checkpoint(
+                mome_path,
+                peft_helper=peft_helper,
+                mome_model_id=mome_request.mome_int_id,
+                device="cpu")
+
+        except FileNotFoundError as e:
+            # FileNotFoundError should be raised if both
+            # - No adapter found to download from huggingface (or in
+            #       offline mode)
+            # - No local adapter files found at `mome_request.mome_path`
+            # For NotFoundError
+            raise ValueError(
+                f"Loading mome {mome_request.mome_name} failed: No adapter "
+                f"found for {mome_path}") from e
+        except Exception as e:
+            # For BadRequestError
+            raise e
+
+        return mome
+
+    def add_dummy_mome(self, mome_request: MoMERequest, rank: int) -> bool:
+        if mome_request.mome_int_id in self.list_adapters():
+            return False
+        if isinstance(self._cached_dummy_mome, MoMEModel):
+            dummy_mome = self._cached_dummy_mome.clone(
+                mome_request.mome_int_id)
+        else:
+            dummy_mome = self._adapter_manager.create_dummy_mome(
+                mome_request.mome_int_id, rank, 1, self.embedding_modules)
+            if self._cached_dummy_mome is None:
+                self._cached_dummy_mome = dummy_mome
+        return self._adapter_manager.add_adapter(dummy_mome)
+
+    def pin_adapter(self, adapter_id: int) -> bool:
+        return self._adapter_manager.pin_adapter(adapter_id)
+
+    def set_active_adapters(self, requests: Set[Any],
+                            mapping: Optional[Any]) -> None:
+        set_active_adapters_worker(requests, mapping, self._apply_adapters,
+                                   self._adapter_manager.set_adapter_mapping)
+
+    def _apply_adapters(self, adapter_requests: Set[Any]) -> None:
+        apply_adapters_worker(adapter_requests, self.list_adapters,
+                              self._adapter_manager.adapter_slots,
+                              self.remove_adapter, self.add_adapter)
+
+    def add_adapter(self, adapter_request: Any) -> bool:
+        return add_adapter_worker(adapter_request, self.list_adapters,
+                                  self._load_adapter,
+                                  self._adapter_manager.add_adapter,
+                                  self._adapter_manager.activate_adapter)
+
+    def remove_adapter(self, adapter_id: int) -> bool:
+        return self._adapter_manager.remove_adapter(adapter_id)
+
+    def remove_all_adapters(self):
+        self._adapter_manager.remove_all_adapters()
+
+    def list_adapters(self) -> Set[int]:
+        return list_adapters_worker(self._adapter_manager.list_adapters)
+

@@ -32,6 +32,9 @@ from vllm.logger import init_logger
 from vllm.lora.layers import LoRAMapping
 from vllm.lora.request import LoRARequest
 from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
+from vllm.mome.layers import MoMEMapping
+from vllm.mome.request import MoMERequest
+from vllm.mome.worker_manager import WorkerMoMEManager
 from vllm.model_executor import SamplingMetadata, SamplingMetadataCache
 from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
 from vllm.model_executor.layers.sampler import SamplerOutput
@@ -1084,6 +1087,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
         self.model: nn.Module  # Set after load_model
         # Set after load_model.
         self.lora_manager: Optional[LRUCacheWorkerLoRAManager] = None
+        self.mome_manager: Optional[WorkerMoMEManager] = None
         self.prompt_adapter_manager: LRUCacheWorkerPromptAdapterManager = None
 
         set_cpu_offload_max_bytes(
@@ -1142,6 +1146,13 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                 max_position_embeddings=max_pos_embeddings,
             )
             self.model = self.lora_manager.create_lora_manager(self.model)
+
+        if self.mome_config:
+            self.mome_manager = WorkerMoMEManager(
+                self.mome_config,
+                self.device,
+            )
+            self.model = self.mome_manager.create_mome_manager(self.model)
 
         if self.prompt_adapter_config:
             self.prompt_adapter_manager = LRUCacheWorkerPromptAdapterManager(

@@ -3063,6 +3063,7 @@ class VllmConfig:
                                         init=True)  # type: ignore
     load_config: LoadConfig = field(default=None, init=True)  # type: ignore
     lora_config: Optional[LoRAConfig] = None
+    mome_config: Optional[MoMEConfig] = None
     speculative_config: Optional[SpeculativeConfig] = None
     decoding_config: Optional[DecodingConfig] = None
     observability_config: Optional[ObservabilityConfig] = None

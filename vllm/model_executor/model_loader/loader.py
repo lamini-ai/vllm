@@ -147,6 +147,8 @@ def _initialize_model(
         kwargs["quant_config"] = vllm_config.quant_config
     if "lora_config" in all_params:
         kwargs["lora_config"] = vllm_config.lora_config
+    if "mome_config" in all_params:
+        kwargs["mome_config"] = vllm_config.mome_config
     if "scheduler_config" in all_params:
         kwargs["scheduler_config"] = vllm_config.scheduler_config
     with set_current_vllm_config(vllm_config, check_compile=True):
