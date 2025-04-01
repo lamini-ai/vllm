@@ -133,6 +133,11 @@ class RPCLoadAdapterRequest:
     # Set the default value of request_id to a new UUID
     request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
+@dataclass
+class RPCLoadMoMEAdapterRequest:
+    mome_request: LoRARequest
+    # Set the default value of request_id to a new UUID
+    request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 @dataclass
 class RPCAdapterLoadedResponse:
