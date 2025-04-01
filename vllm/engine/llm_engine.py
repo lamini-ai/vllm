@@ -1827,6 +1827,18 @@ class LLMEngine:
     def pin_lora(self, lora_id: int) -> bool:
         return self.model_executor.pin_lora(lora_id)
 
+    def add_mome(self, mome_request: LoRARequest) -> bool:
+        return self.model_executor.add_mome(mome_request)
+
+    def remove_mome(self, mome_id: int) -> bool:
+        return self.model_executor.remove_mome(mome_id)
+
+    def list_momes(self) -> Set[int]:
+        return self.model_executor.list_momes()
+    
+    def pin_mome(self, lora_id: int) -> bool:
+        return self.model_executor.pin_mome(lora_id)
+       
     def add_prompt_adapter(
             self, prompt_adapter_request: PromptAdapterRequest) -> bool:
         return self.model_executor.add_prompt_adapter(prompt_adapter_request)

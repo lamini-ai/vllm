@@ -105,11 +105,6 @@ class MoMEModelManager(AdapterModelManager):
     def adapter_slots(self) -> int:
         return self.mome_slots
 
-    def create_mome_manager(self) -> Any:
-        """Create a MoME manager for the given model."""
-        # Implementation for creating a MoME manager
-        return {"manager_created": True}
-
     def activate_adapter(
         self,
         mome_id: int,

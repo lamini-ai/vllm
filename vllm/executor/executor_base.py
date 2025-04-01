@@ -11,6 +11,7 @@ from typing_extensions import TypeVar
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.platforms import current_platform
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -161,6 +162,24 @@ class ExecutorBase(ABC):
             assert s == sets[0], "All workers should have the same LORAs."
         return sets[0]
 
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        assert mome_request.mome_int_id > 0, "mome_id must be greater than 0."
+        return all(self.collective_rpc("add_mome", args=(mome_request, )))
+
+    def remove_mome(self, mome_id: int) -> bool:
+        assert mome_id > 0, "mome_id must be greater than 0."
+        return all(self.collective_rpc("remove_mome", args=(mome_id, )))
+
+    def pin_mome(self, mome_id: int) -> bool:
+        assert mome_id > 0, "mome_id must be greater than 0."
+        return all(self.collective_rpc("pin_mome", args=(mome_id, )))
+
+    def list_momes(self) -> Set[int]:
+        sets = self.collective_rpc("list_momes")
+        for s in sets:
+            assert s == sets[0], "All workers should have the same LORAs."
+        return sets[0]
+    
     def add_prompt_adapter(
             self, prompt_adapter_request: PromptAdapterRequest) -> bool:
         assert prompt_adapter_request.prompt_adapter_id > 0, \

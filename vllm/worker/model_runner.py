@@ -1393,6 +1393,37 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             raise RuntimeError("LoRA is not enabled.")
         return self.lora_manager.list_adapters()
 
+    def remove_all_momes(self):
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        self.mome_manager.remove_all_adapters()
+
+    def set_active_momes(self, mome_requests: Set[LoRARequest],
+                         mome_mapping: LoRAMapping) -> None:
+        if not self.mome_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        self.mome_manager.set_active_adapters(mome_requests, mome_mapping)
+
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.add_adapter(mome_request)
+
+    def remove_mome(self, mome_id: int) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.remove_adapter(mome_id)
+
+    def pin_mome(self, mome_id: int) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.pin_adapter(mome_id)
+
+    def list_momes(self) -> Set[int]:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.list_adapters()
+
     def remove_all_prompt_adapters(self):
         if not self.prompt_adapter_manager:
             raise RuntimeError("PromptAdapter is not enabled.")
