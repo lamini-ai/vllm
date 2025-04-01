@@ -93,6 +93,8 @@ class ModelInputForGPU(ModelRunnerInputBase):
     query_lens: Optional[List[int]] = None
     lora_mapping: Optional["LoRAMapping"] = None
     lora_requests: Optional[Set[LoRARequest]] = None
+    mome_mapping: Optional["MoMEMapping"] = None
+    mome_requests: Optional[Set[MoMERequest]] = None
     attn_metadata: Optional["AttentionMetadata"] = None
     prompt_adapter_mapping: Optional[PromptAdapterMapping] = None
     prompt_adapter_requests: Optional[Set[PromptAdapterRequest]] = None
@@ -1401,7 +1403,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
     def set_active_momes(self, mome_requests: Set[LoRARequest],
                          mome_mapping: LoRAMapping) -> None:
         if not self.mome_manager:
-            raise RuntimeError("LoRA is not enabled.")
+            raise RuntimeError("MoME is not enabled.")
         self.mome_manager.set_active_adapters(mome_requests, mome_mapping)
 
     def add_mome(self, mome_request: MoMERequest) -> bool:
@@ -1541,6 +1543,13 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                                    prompt_mapping=[0] * batch_size,
                                    is_prefill=False))
                         self.set_active_loras(set(), lora_mapping)
+
+                    if self.mome_config:
+                        moma_mapping = MoMEMapping(
+                            **dict(index_mapping=[0] * batch_size,
+                                   prompt_mapping=[0] * batch_size,
+                                   is_prefill=False))
+                        self.set_active_momes(set(), moma_mapping)
 
                     if self.prompt_adapter_config:
                         prompt_adapter_mapping = PromptAdapterMapping(
@@ -1701,6 +1710,12 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             assert model_input.lora_mapping is not None
             self.set_active_loras(model_input.lora_requests,
                                   model_input.lora_mapping)
+            
+        if self.mome_config:
+            assert model_input.mome_requests is not None
+            assert model_input.mome_mapping is not None
+            self.set_active_momes(model_input.mome_requests,
+                                  model_input.mome_mapping)
 
         if self.prompt_adapter_config:
             assert model_input.prompt_adapter_requests is not None
