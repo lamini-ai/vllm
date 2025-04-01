@@ -18,6 +18,7 @@ from vllm.engine.multiprocessing import (ENGINE_DEAD_ERROR, IPC_DATA_EXT,
                                          VLLM_RPC_SUCCESS_STR, RPCAbortRequest,
                                          RPCAdapterLoadedResponse, RPCError,
                                          RPCLoadAdapterRequest,
+                                         RPCLoadMoMEAdapterRequest,
                                          RPCProcessRequest,
                                          RPCResetPrefixCacheRequest,
                                          RPCStartupRequest, RPCStartupResponse,
@@ -240,6 +241,8 @@ class MQLLMEngine:
                         self.stop_profile()
                 elif isinstance(request, RPCLoadAdapterRequest):
                     self._handle_load_adapter_request(request)
+                elif isinstance(request, RPCLoadMoMEAdapterRequest):
+                    self._handle_load_mome_adapter_request(request)
                 elif isinstance(request, RPCResetPrefixCacheRequest):
                     self.reset_prefix_cache()
                 else:
@@ -305,6 +308,20 @@ class MQLLMEngine:
         # Otherwise, send back the successful load message
         self._send_outputs(
             RPCAdapterLoadedResponse(request_id=request.request_id))
+
+    def _handle_load_mome_adapter_request(self, request: RPCLoadMoMEAdapterRequest):
+        try:
+            self.engine.add_mome(request.mome_request)
+        except BaseException as e:
+            # Send back an error if the adater fails to load
+            rpc_err = RPCError(request_id=request.request_id,
+                               is_engine_errored=False,
+                               exception=e)
+            self._send_outputs(rpc_err)
+            return
+        # Otherwise, send back the successful load message
+        self._send_outputs(
+            RPCAdapterLoadedResponse(request_id=request.request_id))       
 
     def _health_check(self):
         # Send unhealthy if engine has already errored
