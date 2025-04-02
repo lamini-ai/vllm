@@ -17,6 +17,7 @@ from vllm.lora.models import (LoRAModel, LoRAModelManager,
 from vllm.lora.peft_helper import PEFTHelper
 from vllm.lora.request import LoRARequest
 from vllm.lora.utils import get_adapter_absolute_path
+from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
 
 logger = init_logger(__name__)
 
@@ -83,6 +84,8 @@ class WorkerLoRAManager(AbstractWorkerManager):
         return lora_manager.model
 
     def _load_adapter(self, lora_request: LoRARequest) -> LoRAModel:
+        # TEST MOME LOADING DIRECTLY
+        load_mome_model_for_inference(self._adapter_manager.model, "/eda-test/mome-test/checkpoints/checkpoint-60")
         try:
             model = self._adapter_manager.model
             supported_lora_modules = model.supported_lora_modules

@@ -32,7 +32,6 @@ from vllm.model_executor.models.module_mapping import MultiModelKeys
 from vllm.model_executor.models.utils import PPMissingLayer, WeightsMapper
 from vllm.utils import is_pin_memory_available
 
-from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
 
 logger = init_logger(__name__)
 
@@ -373,7 +372,6 @@ class LoRAModelManager(AdapterModelManager):
         lora_id: int,
     ) -> bool:
         """Move LoRA into a GPU buffer to be used in the forward pass."""
-        load_mome_model_for_inference(self.model, "/eda-test/mome-test/checkpoints/checkpoint-60")
         if lora_id in self._active_adapters:
             return False
         first_free_slot = next(
