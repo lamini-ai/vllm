@@ -90,6 +90,7 @@ class LoraHeadAdaptor(nn.Module):
         return results + lora_results
 
 
+# [Lamini] UPDATED HIDDEN SIZE FUNCTION TO WORK WITH VLLM
 def get_hidden_size(layer):
     logger.debug(f"getting hidden size for layer: {layer}")
     if hasattr(layer, "attention"):
@@ -99,30 +100,23 @@ def get_hidden_size(layer):
         logger.debug(f"hidden size: {layer.hidden_size} from layer.hidden_size")
         return layer.hidden_size
 
-    if hasattr(layer, "q_proj"):
-        logger.debug(f"hidden size: {layer.q_proj.weight.shape[1]} from layer.q_proj")
-        return layer.q_proj.weight.shape[1]
+    def get_proj_hidden(p):
+        try:
+            return list(p.parameters())[0].shape[1]
+        except Exception:
+            return None
 
-    if hasattr(layer, "out_proj"):
-        logger.debug(
-            f"hidden size: {layer.out_proj.weight.shape[1]} from layer.out_proj"
-        )
-        return layer.out_proj.weight.shape[1]
+    for name in ["q_proj", "out_proj", "c_fc", "fc2", "gate_up_proj", "c_proj"]:
+        if hasattr(layer, name):
+            sub = getattr(layer, name)
+            h = get_proj_hidden(sub)
+            if h:
+                logger.debug(f"hidden size: {h} from layer.{name}")
+                return h
 
-    if hasattr(layer, "c_fc"):
-        logger.debug(f"hidden size: {layer.c_fc.weight.shape[1]} from layer.c_fc")
-        return layer.c_fc.weight.shape[1]
+    if hasattr(layer, "head_size") and hasattr(layer, "num_heads"):
+        hidden_size = layer.head_size * layer.num_heads
+        logger.debug(f"hidden size: {hidden_size} computed from head_size * num_heads")
+        return hidden_size
 
-    if hasattr(layer, "fc2"):
-        logger.debug(f"hidden size: {layer.fc2.weight.shape[0]} from layer.fc2")
-        return layer.fc2.weight.shape[0]
-
-    if hasattr(layer, "gate_up_proj"):
-        logger.debug(
-            f"hidden size: {layer.gate_up_proj.weight.shape[1]} from layer.gate_up_proj"
-        )
-        return layer.gate_up_proj.weight.shape[1]
-
-    assert hasattr(layer, "c_proj")
-    logger.debug(f"hidden size: {layer.c_proj.weight.shape[1]} from layer.c_proj")
-    return layer.c_proj.weight.shape[1]
+    raise ValueError(f"Can't determine hidden size for layer type: {type(layer)}")
