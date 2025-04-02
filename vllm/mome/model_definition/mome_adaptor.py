@@ -365,7 +365,8 @@ class MoMEAdaptor(nn.Module):
             hidden_size=get_hidden_size(layer),
             r_value=r_value,
             mome_embedding_seq_length=mome_embedding_seq_length,
-            device=get_device(layer),
+            # [Lamini] TODO: ACTUALLY GET THE DEVICE, HARDCODING FOR NOW
+            device="cpu",
             embeddings=embeddings,
             index=index,
             index_k=index_k,
