@@ -2090,7 +2090,6 @@ class MoMEConfig:
     max_mome_rank: int
     max_momes: int
     fully_sharded_momes: bool = False
-    max_cpu_momes: Optional[int] = None
 
     # The type of MoME model.
     mome_type: str
@@ -2102,7 +2101,9 @@ class MoMEConfig:
     sequence_length: int
     # Number of nearest neighbors to consider.
     index_k: int
-    
+
+    max_cpu_momes: Optional[int] = None
+
 
 @dataclass
 class LoRAConfig:
