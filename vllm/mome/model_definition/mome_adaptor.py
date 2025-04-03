@@ -366,7 +366,7 @@ class MoMEAdaptor(nn.Module):
             r_value=r_value,
             mome_embedding_seq_length=mome_embedding_seq_length,
             # [Lamini] TODO: ACTUALLY GET THE DEVICE, HARDCODING FOR NOW
-            device="cpu",
+            device= "cuda" if torch.cuda.is_available() else "cpu",
             embeddings=embeddings,
             index=index,
             index_k=index_k,

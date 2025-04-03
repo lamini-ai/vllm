@@ -65,6 +65,8 @@ from vllm.worker.model_runner_base import (
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
 
+from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
+
 logger = init_logger(__name__)
 
 LORA_WARMUP_RANK = 8
@@ -1251,6 +1253,10 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                    max_num_batched_tokens: int,
                    max_num_seqs: int = 1) -> None:
         with self.set_in_profile_run():
+            print("device: ", self.device)
+            print("mome ------- start")
+            load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
+            print("mome ------- end")
             # Enable top-k sampling to reflect the accurate memory usage.
             sampling_params = \
                 SamplingParams(top_p=0.99, top_k=self.vocab_size - 1)

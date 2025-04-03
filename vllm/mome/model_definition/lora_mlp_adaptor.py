@@ -99,13 +99,13 @@ def get_hidden_size(layer):
     if hasattr(layer, "hidden_size"):
         logger.debug(f"hidden size: {layer.hidden_size} from layer.hidden_size")
         return layer.hidden_size
-
+    
     def get_proj_hidden(p):
         try:
             return list(p.parameters())[0].shape[1]
         except Exception:
             return None
-
+        
     for name in ["q_proj", "out_proj", "c_fc", "fc2", "gate_up_proj", "c_proj"]:
         if hasattr(layer, name):
             sub = getattr(layer, name)
