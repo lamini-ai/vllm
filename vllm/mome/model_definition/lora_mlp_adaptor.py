@@ -1,3 +1,4 @@
+
 import logging
 from typing import Optional
 
@@ -13,12 +14,15 @@ class LoraMLPAdaptor(nn.Module):
         super().__init__()
         self.layer = layer
 
+        print("layer:", dir(layer))
         # Get the hidden size
         hidden_size = get_hidden_size(layer)
-
+        
+        # [Lamini] UPDATED HIDDEN SIZE FUNCTION TO WORK WITH VLLM
+        device = "cuda"
         # Add a mome attention layer
-        self.mlp_lora_in = nn.Linear(hidden_size, r_value, bias=False)
-        self.mlp_lora_out = nn.Linear(r_value, hidden_size, bias=False)
+        self.mlp_lora_in = nn.Linear(hidden_size, r_value, bias=False, device=device)
+        self.mlp_lora_out = nn.Linear(r_value, hidden_size, bias=False, device=device)
 
         self._reset_parameters()
 
@@ -56,9 +60,11 @@ class LoraHeadAdaptor(nn.Module):
         super().__init__()
         self.layer = layer
         self.hidden_size = layer.weight.shape
+        device = "cuda"
         # Add a mome attention layer
-        self.mlp_lora_in = nn.Linear(self.hidden_size[1], r_value, bias=False)
-        self.mlp_lora_out = nn.Linear(r_value, self.hidden_size[0], bias=False)
+        self.mlp_lora_in = nn.Linear(self.hidden_size[1], r_value, bias=False, device=device)
+        self.mlp_lora_out = nn.Linear(r_value, self.hidden_size[0], bias=False, device=device)
+        self.linear_method = getattr(self.layer, "linear_method", None)
 
         self._reset_parameters()
 
@@ -89,7 +95,14 @@ class LoraHeadAdaptor(nn.Module):
 
         return results + lora_results
 
+    @property
+    def weight(self):
+        return self.layer.weight
+    @property
+    def bias(self):
+        return self.layer.bias
 
+    
 # [Lamini] UPDATED HIDDEN SIZE FUNCTION TO WORK WITH VLLM
 def get_hidden_size(layer):
     logger.debug(f"getting hidden size for layer: {layer}")

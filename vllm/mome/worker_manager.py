@@ -70,7 +70,6 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
     def _load_adapter(self, mome_request: MoMERequest) -> MoMEModel:
         try:
-
             expected_mome_modules = list(set(expected_mome_modules))
             mome_path = get_adapter_absolute_path(mome_request.mome_path)
 
@@ -87,9 +86,7 @@ class WorkerMoMEManager(AbstractWorkerManager):
                 device="cpu")
 
         except FileNotFoundError as e:
-            # FileNotFoundError should be raised if both
-            # - No adapter found to download from huggingface (or in
-            #       offline mode)
+            # FileNotFoundError should be raised if
             # - No local adapter files found at `mome_request.mome_path`
             # For NotFoundError
             raise ValueError(

@@ -36,7 +36,7 @@ def load_mome_model_for_inference(base_model, path):
     model = PretrainedLaminiMoMEForCausalLM.from_pretrained(
         base_model, os.path.abspath(path)
     )
-    model.device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.device = "cuda"
 
     prepare_mome_model_for_inference(base_model, model)
 
@@ -57,17 +57,17 @@ def prepare_mome_model_for_inference(base_model, model):
     )
     model._validate_generated_length = getattr(base_model, "_validate_generated_length", None)
     model._extract_past_from_model_output = getattr(base_model, "_extract_past_from_model_output", None)
-    
+
     if hasattr(model, "_get_generation_mode"):
         model._get_generation_mode = getattr(base_model, "_get_generation_mode", None)
-        
+
     model._get_logits_processor = getattr(base_model, "_get_logits_processor", None)
     model._get_stopping_criteria = getattr(base_model, "_get_stopping_criteria", None)
     model.prepare_inputs_for_generation = getattr(base_model, "prepare_inputs_for_generation", None)
     model._update_model_kwargs_for_generation = getattr(base_model, "_update_model_kwargs_for_generation", None)
     model._get_initial_cache_position = getattr(base_model, "_get_initial_cache_position", None)
     model._supports_default_dynamic_cache = getattr(base_model, "_supports_default_dynamic_cache", None)
-    
+
     logger.info(f"Loaded MoME model: {model}")
 
     return model
@@ -100,6 +100,8 @@ class PretrainedLaminiMoMEForCausalLM(PushToHubMixin, torch.nn.Module):
         }
 
         cloned_model = clone_module(base_model)
+        # print("vocab_size before: ", cloned_model.config.vocab_size)
+
         self.mome_model = add_mome_adaptors_to_each_layer(
             cloned_model, config, self.embeddings, self.index
         )
@@ -110,6 +112,7 @@ class PretrainedLaminiMoMEForCausalLM(PushToHubMixin, torch.nn.Module):
         self.mome_model = add_extra_lora_adapters_to_head(
             base_model.name_or_path, self.mome_model, config
         )
+        # print("vocab_size after: ", self.mome_model.config.vocab_size)
         self.load_adapter(config.path, cloned_model.name_or_path)
 
     @classmethod
@@ -170,8 +173,8 @@ class PretrainedLaminiMoMEForCausalLM(PushToHubMixin, torch.nn.Module):
             device=torch_device,
         )
 
-        # logger.debug("LOADED ADAPTERS WEIGHTS: " + str(adapters_weights))
-        # logger.debug("BEFORE LOADING ADAPTERS: " + str(self.mome_model.state_dict()))
+        #logger.debug("LOADED ADAPTERS WEIGHTS: " + str(adapters_weights))
+        #logger.debug("BEFORE LOADING ADAPTERS: " + str(self.mome_model.state_dict()))
         # load the weights into the model
         load_result = set_mome_model_state_dict_for_inference(
             self.mome_model,

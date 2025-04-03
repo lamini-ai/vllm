@@ -75,6 +75,7 @@ class LaminiMoMEForCausalLM(PreTrainedModel):
         self.config.index_k = self.mome_config.index_k
         freeze_all_model_params(cloned_model)
 
+        # print("vocab_size before: ", self.mome_model.config.vocab_size)
         self.mome_model = add_mome_adaptors_to_each_layer(
             cloned_model,
             self.mome_config,
@@ -89,6 +90,7 @@ class LaminiMoMEForCausalLM(PreTrainedModel):
         self.mome_model = add_extra_lora_adapters_to_head(
             self.mome_config.base_model_name_or_path, self.mome_model, self.mome_config
         )
+        # print("vocab_size after: ", self.mome_model.config.vocab_size)
 
         mark_only_adapters_as_trainable(self.mome_model)
 
@@ -106,7 +108,7 @@ class LaminiMoMEForCausalLM(PreTrainedModel):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        # attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -118,7 +120,7 @@ class LaminiMoMEForCausalLM(PreTrainedModel):
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return self.mome_model.forward(
             input_ids=input_ids,
-            attention_mask=attention_mask,
+            # attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
@@ -361,12 +363,12 @@ class MoMEAdaptor(nn.Module):
         self.requires_attention_output = requires_attention_output
 
         # Add a mome attention layer
+        #print("layer:", dir(layer))
         self.mome_attention = MoMEAttentionLayer(
             hidden_size=get_hidden_size(layer),
             r_value=r_value,
             mome_embedding_seq_length=mome_embedding_seq_length,
-            # [Lamini] TODO: ACTUALLY GET THE DEVICE, HARDCODING FOR NOW
-            device= "cuda" if torch.cuda.is_available() else "cpu",
+            device="cuda",
             embeddings=embeddings,
             index=index,
             index_k=index_k,
@@ -376,7 +378,7 @@ class MoMEAdaptor(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        #attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
@@ -403,11 +405,12 @@ class MoMEAdaptor(nn.Module):
 
         layer_outputs = self.layer(
             hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
+            # attention_mask=attention_mask,
+            # output_attentions=output_attentions,
+            # use_cache=use_cache,
             **kwargs,
         )
+        print("layer_outputs.shape:", layer_outputs.shape)
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = self.mome_attention(hidden_states)
 
@@ -417,6 +420,12 @@ class MoMEAdaptor(nn.Module):
         # logger.debug(
         #     f"self_attention_output: {self_attention_output} {torch.histogram(self_attention_output, bins=4)}"
         # )
+
+        # print("type layer_outputs: ", type(layer_outputs))
+        if isinstance(layer_outputs, tuple):
+            return (layer_outputs[0] + mome_attention_output,) + layer_outputs[1:]
+        else:
+            return layer_outputs + mome_attention_output
 
         layer_and_adaptor_sum = layer_outputs[0] + mome_attention_output
 
@@ -456,9 +465,7 @@ class MoMEAttentionLayer(nn.Module):
         super().__init__()
         self.index = index
         self.index_k = index_k
-        self.index_dimension = min(
-            index.embedding_dimension, hidden_size
-        )  # need hidden_size?
+        self.index_dimension = index.embedding_dimension
 
         self.embeddings = embeddings
 
@@ -485,16 +492,17 @@ class MoMEAttentionLayer(nn.Module):
         self.embeddings["embedding_indices"].append([])
 
         # A linear layer to project the query into the space of the index
-        self.query_projection_lora_in = nn.Linear(hidden_size, r_value, bias=False)
+        device = "cuda"
+        self.query_projection_lora_in = nn.Linear(hidden_size, r_value, bias=False, device=device)
         self.query_projection_lora_out = nn.Linear(
-            r_value, self.index_dimension, bias=False
+            r_value, self.index_dimension, bias=False, device=device
         )
 
         # A linear layer to project the value into the space of the original hidden size
         self.value_projection_lora_in = nn.Linear(
-            self.index_dimension, r_value, bias=False
+            self.index_dimension, r_value, bias=False, device=device
         )
-        self.value_projection_lora_out = nn.Linear(r_value, hidden_size, bias=False)
+        self.value_projection_lora_out = nn.Linear(r_value, hidden_size, bias=False, device=device)
 
         self._reset_parameters()
 
@@ -506,14 +514,16 @@ class MoMEAttentionLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        # attention_mask: Optional[torch.Tensor] = None,
         # position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
         **kwargs,
     ):
+        # print("hidden_states.shape:", hidden_states.shape)
         query = self.get_query(hidden_states)
+        # print("query.shape:", query.shape)
         key, value = self.get_key_and_value(query)
 
         # logger.debug(f"query shape: {query.shape}, type: {query.dtype}")
@@ -531,7 +541,7 @@ class MoMEAttentionLayer(nn.Module):
             query=query,
             key=key,
             value=value,
-            attn_mask=attention_mask,
+            # attn_mask=attention_mask,
             dropout_p=0.1,
             is_causal=True,
             scale=None,
@@ -580,9 +590,17 @@ class MoMEAttentionLayer(nn.Module):
             return key, value
 
     def get_key_and_value_from_index(self, query):
-        batch_size = query.shape[0]
-        sequence_length = query.shape[1]
-        embedding_dimension = query.shape[2]
+        print("query size: ", query.shape)
+        # print("query.shape[0]: ", query.shape[0])
+        # print("query.shape[1]: ", query.shape[1])
+        if query.dim() == 2:
+            batch_size = 1
+            sequence_length = query.shape[0]
+            embedding_dimension = query.shape[1]
+        else:
+            batch_size = query.shape[0]
+            sequence_length = query.shape[1]
+            embedding_dimension = query.shape[2]
 
         # logger.debug(f"batch_size: {batch_size}")
         # logger.debug(f"sequence_length: {sequence_length}")

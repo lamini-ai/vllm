@@ -1254,9 +1254,22 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                    max_num_seqs: int = 1) -> None:
         with self.set_in_profile_run():
             print("device: ", self.device)
+            original_model = self.model
             print("mome ------- start")
-            load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
+            self.model = load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
             print("mome ------- end")
+
+            # Try to use the original model's methods to replace the mome model's, but mome_model change has self.model.mome_model.lm_head, vllm need self.model.lm_head
+            for method in ["compute_logits", "get_input_embeddings", "set_input_embeddings"]:
+                method_impl = getattr(original_model, method, None)
+                if method_impl is not None:
+                    setattr(self.model, method, method_impl.__get__(self.model, self.model.__class__))
+            if hasattr(original_model, "logits_processor"):
+                self.model.logits_processor = original_model.logits_processor
+            # if hasattr(self.model, "mome_model") and hasattr(self.model.mome_model, "lm_head"):
+            #     self.model.lm_head = self.model.mome_model.lm_head
+            #     self.model.lm_head = self.model.lm_head.to(self.device)
+
             # Enable top-k sampling to reflect the accurate memory usage.
             sampling_params = \
                 SamplingParams(top_p=0.99, top_k=self.vocab_size - 1)
