@@ -2091,6 +2091,7 @@ class MoMEConfig:
     max_momes: int
     fully_sharded_momes: bool = False
     max_cpu_momes: Optional[int] = None
+    mome_dtype: Optional[Union[torch.dtype, str]] = None
 
 
 @dataclass

@@ -13,7 +13,7 @@ import vllm.envs as envs
 from vllm.config import (CacheConfig, CompilationConfig, ConfigFormat,
                          DecodingConfig, DeviceConfig, HfOverrides,
                          KVTransferConfig, LoadConfig, LoadFormat, LoRAConfig,
-                         ModelConfig, ModelImpl, ObservabilityConfig,
+                         MoMEConfig, ModelConfig, ModelImpl, ObservabilityConfig,
                          ParallelConfig, PoolerConfig, PromptAdapterConfig,
                          SchedulerConfig, SpeculativeConfig, TaskOption,
                          TokenizerPoolConfig, VllmConfig)
@@ -145,6 +145,11 @@ class EngineArgs:
     enable_lora_bias: bool = False
     max_loras: int = 1
     max_lora_rank: int = 16
+    enable_mome: bool = False
+    max_momes: int = 1
+    max_mome_rank: int = 16
+    mome_dtype: Optional[Union[str, torch.dtype]] = 'auto'
+    max_cpu_momes: Optional[int] = None
     enable_prompt_adapter: bool = False
     max_prompt_adapters: int = 1
     max_prompt_adapter_token: int = 0
@@ -671,6 +676,42 @@ class EngineArgs:
                   'Enabling this will use the fully sharded layers. '
                   'At high sequence length, max rank or '
                   'tensor parallel size, this is likely faster.'))
+
+        # MoME related configs
+        parser.add_argument('--enable-mome',
+                            action='store_true',
+                            help='If True, enable handling of LoRA adapters.')
+        parser.add_argument('--max-momes',
+                            type=int,
+                            default=EngineArgs.max_momes,
+                            help='Max number of MoMEs in a single batch.')
+        parser.add_argument('--max-mome-rank',
+                            type=int,
+                            default=EngineArgs.max_mome_rank,
+                            help='Max MoME rank.')
+        parser.add_argument(
+            '--mome-dtype',
+            type=str,
+            default=EngineArgs.mome_dtype,
+            choices=['auto', 'float16', 'bfloat16'],
+            help=('Data type for MoME. If auto, will default to '
+                  'base model dtype.'))
+        parser.add_argument(
+            '--max-cpu-momes',
+            type=int,
+            default=EngineArgs.max_cpu_momes,
+            help=('Maximum number of MoMEs to store in CPU memory. '
+                  'Must be >= than max_momes. '
+                  'Defaults to max_momes.'))
+        parser.add_argument(
+            '--fully-sharded-momes',
+            action='store_true',
+            help=('By default, only half of the MoME computation is '
+                  'sharded with tensor parallelism. '
+                  'Enabling this will use the fully sharded layers. '
+                  'At high sequence length, max rank or '
+                  'tensor parallel size, this is likely faster.'))
+        
         parser.add_argument('--enable-prompt-adapter',
                             action='store_true',
                             help='If True, enable handling of PromptAdapters.')
@@ -1239,7 +1280,13 @@ class EngineArgs:
             lora_dtype=self.lora_dtype,
             max_cpu_loras=self.max_cpu_loras if self.max_cpu_loras
             and self.max_cpu_loras > 0 else None) if self.enable_lora else None
-
+        mome_config = MoMEConfig(
+            max_mome_rank=self.max_mome_rank,
+            max_momes=self.max_momes,
+            mome_dtype=self.mome_dtype,
+            max_cpu_momes=self.max_cpu_momes if self.max_cpu_momes
+            and self.max_cpu_momes > 0 else None) if self.enable_mome else None
+        
         if self.qlora_adapter_name_or_path is not None and \
             self.qlora_adapter_name_or_path != "":
             if self.model_loader_extra_config is None:
@@ -1280,6 +1327,7 @@ class EngineArgs:
             scheduler_config=scheduler_config,
             device_config=device_config,
             lora_config=lora_config,
+            mome_config=mome_config,
             speculative_config=speculative_config,
             load_config=load_config,
             decoding_config=decoding_config,

@@ -211,6 +211,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self.lora_index_mapping.clear()  # type: ignore
             self.lora_prompt_mapping.clear()  # type: ignore
             self.lora_requests.clear()  # type: ignore
+            self.mome_index_mapping.clear()  # type: ignore
+            self.mome_requests.clear()  # type: ignore
             self.prompt_adapter_index_mapping.clear()  # type: ignore
             self.prompt_adapter_prompt_mapping.clear()  # type: ignore
 
@@ -247,6 +249,11 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             lora_index_mapping: Optional[List[List[int]]] = None,
             lora_prompt_mapping: Optional[List[List[int]]] = None,
             lora_requests: Optional[Set[LoRARequest]] = None,
+
+            # MoME inputs.
+            mome_index_mapping: Optional[List[List[int]]] = None,
+            mome_prompt_mapping: Optional[List[List[int]]] = None,
+            mome_requests: Optional[Set[MoMERequest]] = None,
 
             # Prompt adapter inputs.
             prompt_adapter_index_mapping: Optional[List[int]] = None,
@@ -347,6 +354,21 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                         self.lora_requests = lora_requests
                     else:
                         self.lora_requests.clear()
+                    
+                    if mome_index_mapping:
+                        self.mome_index_mapping = mome_index_mapping  
+                    else:
+                        self.mome_index_mapping.clear()
+                    
+                    if mome_prompt_mapping:
+                        self.mome_prompt_mapping = mome_prompt_mapping
+                    else:
+                        self.mome_prompt_mapping.clear()
+                    
+                    if mome_requests:
+                        self.mome_requests = mome_requests
+                    else:
+                        self.mome_requests.clear()
 
                     if prompt_adapter_index_mapping:
                         self.prompt_adapter_index_mapping = \
@@ -375,6 +397,10 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                 self.lora_index_mapping = lora_index_mapping or []
                 self.lora_prompt_mapping = lora_prompt_mapping or []
                 self.lora_requests = lora_requests or set()
+
+                self.mome_index_mapping = mome_index_mapping or []
+                self.mome_prompt_mapping = mome_prompt_mapping or []
+                self.mome_requests = mome_requests or set()
 
                 self.prompt_adapter_index_mapping = (
                     prompt_adapter_index_mapping or [])
@@ -406,6 +432,9 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
             self.lora_index_mapping = []
             self.lora_prompt_mapping = []
+
+            self.mome_index_mapping = []
+            self.mome_prompt_mapping = []
 
     def gen_inter_data_builder(self, num_seqs: int):
         return lambda: ModelInputForGPUBuilder.InterDataForSeqGroup(
@@ -461,6 +490,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         self.sliding_window = self.runner.sliding_window
         self.block_size = self.runner.block_size
         self.enable_lora = self.runner.lora_config is not None
+        self.enable_mome = self.runner.mome_config is not None
         self.enable_prompt_adapter = (self.runner.prompt_adapter_config
                                       is not None)
         self.multi_modal_input_mapper = self.runner.multi_modal_input_mapper
@@ -954,6 +984,28 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                 **dict(index_mapping=lora_index_mapping,
                        prompt_mapping=lora_prompt_mapping,
                        is_prefill=not self.decode_only))
+        # MoME data.
+        mome_requests = set()
+        mome_mapping = None
+        if self.enable_mome:
+            mome_requests = set(r for data in self.inter_data_list
+                                for r in data.mome_requests)
+            mome_index_mapping = flatten_2d_lists([
+                flatten_2d_lists(inter_data.mome_index_mapping)
+                for inter_data in self.inter_data_list
+            ])
+            if cuda_graph_pad_size:
+                mome_index_mapping.extend(
+                    itertools.repeat(0, cuda_graph_pad_size))
+            mome_prompt_mapping = flatten_2d_lists([
+                flatten_2d_lists(inter_data.mome_prompt_mapping)
+                for inter_data in self.inter_data_list
+            ])
+
+            mome_mapping = LoRAMapping(
+                **dict(index_mapping=mome_index_mapping,
+                       prompt_mapping=mome_prompt_mapping,
+                       is_prefill=not self.decode_only))
 
         # Prompt adapter data.
         prompt_adapter_requests: Set[PromptAdapterRequest] = set()
@@ -994,6 +1046,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             query_lens=query_lens,
             lora_mapping=lora_mapping,
             lora_requests=lora_requests,
+            mome_mapping=mome_mapping,
+            mome_requests=mome_requests,
             multi_modal_kwargs=multi_modal_kwargs,
             request_ids_to_seq_ids=request_ids_to_seq_ids,
             finished_requests_ids=self.finished_requests_ids,
@@ -1253,19 +1307,19 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                    max_num_batched_tokens: int,
                    max_num_seqs: int = 1) -> None:
         with self.set_in_profile_run():
-            print("device: ", self.device)
-            original_model = self.model
+            # print("device: ", self.device)
+            # original_model = self.model
             print("mome ------- start")
-            self.model = load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
+            # self.model = load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
             print("mome ------- end")
 
             # Try to use the original model's methods to replace the mome model's, but mome_model change has self.model.mome_model.lm_head, vllm need self.model.lm_head
-            for method in ["compute_logits", "get_input_embeddings", "set_input_embeddings"]:
-                method_impl = getattr(original_model, method, None)
-                if method_impl is not None:
-                    setattr(self.model, method, method_impl.__get__(self.model, self.model.__class__))
-            if hasattr(original_model, "logits_processor"):
-                self.model.logits_processor = original_model.logits_processor
+            # for method in ["compute_logits", "get_input_embeddings", "set_input_embeddings"]:
+            #     method_impl = getattr(original_model, method, None)
+            #     if method_impl is not None:
+            #         setattr(self.model, method, method_impl.__get__(self.model, self.model.__class__))
+            # if hasattr(original_model, "logits_processor"):
+            #     self.model.logits_processor = original_model.logits_processor
             # if hasattr(self.model, "mome_model") and hasattr(self.model.mome_model, "lm_head"):
             #     self.model.lm_head = self.model.mome_model.lm_head
             #     self.model.lm_head = self.model.lm_head.to(self.device)

@@ -210,8 +210,7 @@ def create_mome_manager(
         mome_manager_cls: Type[MoMEModelManager] = MoMEModelManager,
         **kwargs) -> MoMEModelManager:
     """Create a MoME adapter for a given model."""
-    if not hasattr(model, "supported_mome_modules"):
-        raise ValueError(f"Model {type(model)} is not supported for MoME.")
+    logger.warning(f"Make Sure Model {type(model)} is supported for MoME.")
     mome_manager = mome_manager_cls(
         model=model,
         mome_config=mome_config,
