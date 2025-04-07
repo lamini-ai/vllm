@@ -1,3 +1,5 @@
+import copy
+import re
 from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
 
 import torch
@@ -14,6 +16,7 @@ from vllm.adapter_commons.utils import (add_adapter, deactivate_adapter,
 from vllm.config import MoMEConfig
 from vllm.logger import init_logger
 from vllm.mome.layers import (AttentionLayerWithMoME, MoMEMapping)
+from vllm.mome.utils import (from_layer, replace_submodule)
 
 logger = init_logger(__name__)
 
@@ -87,6 +90,9 @@ class MoMEModelManager(AdapterModelManager):
 
         super().__init__(model)
         self.model = model
+        if hasattr(self.model, "supported_mome_modules"):
+            self.supported_mome_modules = copy.deepcopy(
+                self.model.supported_mome_modules)
         self.modules: Dict[str, Any] = {}
         self._last_mapping: Optional[MoMEMapping] = None
         self._create_mome_modules()
@@ -171,8 +177,15 @@ class MoMEModelManager(AdapterModelManager):
             #     new_module.set_embeddings(self.embeddings)
 
             # self.register_module(module_name, new_module)
-            # # All lora layers share the same punica_wrapper based on reference.
+            # All lora layers share the same punica_wrapper based on reference.
             # new_module.set_mapping(self.punica_wrapper)
+    
+    def _match_target_modules(self, module_name: str):
+        return any(
+            re.match(
+                r".*\.{target_module}$".format(target_module=target_module),
+                module_name) or target_module == module_name
+            for target_module in self.supported_mome_modules)
 
     def register_module(self, module_name: str, module: Any):
         self.modules[module_name] = module

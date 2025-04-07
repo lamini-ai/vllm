@@ -30,8 +30,10 @@ from vllm.model_executor.layers.rotary_embedding import (
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding)
 from vllm.platforms import current_platform
+from vllm.logger import init_logger
 
 
+logger = init_logger(__name__)
 
 @dataclass
 class MoMEMapping(AdapterMapping):

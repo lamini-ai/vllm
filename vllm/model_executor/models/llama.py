@@ -459,6 +459,11 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
     }
     embedding_padding_modules = ["lm_head"]
 
+    # MoME specific attributes
+    supported_mome_modules = [
+        "qkv_proj", "lm_head"
+    ]
+
     # Mistral/Llama models can also be loaded with --load-format mistral
     # from consolidated.safetensors checkpoints
     mistral_mapping = {
