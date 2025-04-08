@@ -16,6 +16,7 @@ from vllm.distributed import (ensure_kv_transfer_initialized,
                               set_custom_all_reduce)
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor import set_random_seed
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
@@ -461,13 +462,25 @@ class Worker(LocalOrDistributedWorkerBase):
 
     def list_loras(self) -> Set[int]:
         return self.model_runner.list_loras()
+    
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        return self.model_runner.add_mome(mome_request)
 
+    def remove_mome(self, mome_id: int) -> bool:
+        return self.model_runner.remove_mome(mome_id)
+
+    def pin_mome(self, mome_id: int) -> bool:
+        return self.model_runner.pin_mome(mome_id)
+
+    def list_momes(self) -> Set[int]:
+        return self.model_runner.list_loras()
+    
     def add_prompt_adapter(
             self, prompt_adapter_request: PromptAdapterRequest) -> bool:
         return self.model_runner.add_prompt_adapter(prompt_adapter_request)
 
     def remove_prompt_adapter(self, prompt_adapter_id: int) -> bool:
-        return self.model_runner.remove_lora(prompt_adapter_id)
+        return self.model_runner.remove_prompt_adapter(prompt_adapter_id)
 
     def pin_prompt_adapter(self, prompt_adapter_id: int) -> bool:
         return self.model_runner.pin_prompt_adapter(prompt_adapter_id)
