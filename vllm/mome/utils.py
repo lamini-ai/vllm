@@ -55,6 +55,37 @@ def replace_submodule(model: nn.Module, module_name: str,
     return new_module
 
 
+def get_hidden_size(layer):
+    logger.debug(f"getting hidden size for layer: {layer}")
+    if hasattr(layer, "attention"):
+        return get_hidden_size(layer.attention)
+
+    if hasattr(layer, "hidden_size"):
+        logger.debug(f"hidden size: {layer.hidden_size} from layer.hidden_size")
+        return layer.hidden_size
+    
+    def get_proj_hidden(p):
+        try:
+            return list(p.parameters())[0].shape[1]
+        except Exception:
+            return None
+        
+    for name in ["q_proj", "out_proj", "c_fc", "fc2", "gate_up_proj", "c_proj"]:
+        if hasattr(layer, name):
+            sub = getattr(layer, name)
+            h = get_proj_hidden(sub)
+            if h:
+                logger.debug(f"hidden size: {h} from layer.{name}")
+                return h
+
+    if hasattr(layer, "head_size") and hasattr(layer, "num_heads"):
+        hidden_size = layer.head_size * layer.num_heads
+        logger.debug(f"hidden size: {hidden_size} computed from head_size * num_heads")
+        return hidden_size
+
+    raise ValueError(f"Can't determine hidden size for layer type: {type(layer)}")
+
+
 def parse_fine_tuned_lora_name(
         name: str,
         weights_mapper: Optional[WeightsMapper] = None
