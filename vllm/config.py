@@ -2095,7 +2095,7 @@ class MoMEConfig:
 
     def __post_init__(self):
         if self.max_momes < 1:
-            raise ValueError(f"max_loras ({self.max_momes}) must be >= 1.")
+            raise ValueError(f"max_momes ({self.max_momes}) must be >= 1.")
         if self.max_cpu_momes is None:
             self.max_cpu_momes = self.max_momes
         elif self.max_cpu_momes < self.mmax_momesax_loras:

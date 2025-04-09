@@ -680,7 +680,7 @@ class EngineArgs:
         # MoME related configs
         parser.add_argument('--enable-mome',
                             action='store_true',
-                            help='If True, enable handling of LoRA adapters.')
+                            help='If True, enable handling of MoME adapters.')
         parser.add_argument('--max-momes',
                             type=int,
                             default=EngineArgs.max_momes,
@@ -711,7 +711,7 @@ class EngineArgs:
                   'Enabling this will use the fully sharded layers. '
                   'At high sequence length, max rank or '
                   'tensor parallel size, this is likely faster.'))
-        
+
         parser.add_argument('--enable-prompt-adapter',
                             action='store_true',
                             help='If True, enable handling of PromptAdapters.')
@@ -1286,7 +1286,7 @@ class EngineArgs:
             mome_dtype=self.mome_dtype,
             max_cpu_momes=self.max_cpu_momes if self.max_cpu_momes
             and self.max_cpu_momes > 0 else None) if self.enable_mome else None
-        
+
         if self.qlora_adapter_name_or_path is not None and \
             self.qlora_adapter_name_or_path != "":
             if self.model_loader_extra_config is None:
