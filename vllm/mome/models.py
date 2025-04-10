@@ -16,7 +16,7 @@ from vllm.adapter_commons.utils import (add_adapter, deactivate_adapter,
 from vllm.config import MoMEConfig
 from vllm.logger import init_logger
 from vllm.mome.layers import (AttentionLayerWithMoME, MoMEMapping)
-from vllm.mome.utils import (from_layer, replace_submodule)
+from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule)
 
 logger = init_logger(__name__)
 
@@ -45,6 +45,7 @@ class MoMEModel(AdapterModel):
             mome_model_id
             > 0), f"a valid mome id should be greater than 0, got {self.id}"
         self.rank = rank
+        self.momes: Dict[str, Any] = {}
 
     def clone(self, mome_model_id: int) -> "MoMEModel":
         """Return a copy of the object with different ids.
@@ -55,6 +56,10 @@ class MoMEModel(AdapterModel):
             rank=self.rank,
         )
 
+    def get_mome(self, module_name: str) -> Optional[Any]:
+        """Get MoME for a given module by name"""
+        return self.momes.get(module_name, None)
+    
     @classmethod
     def from_local_checkpoint(cls,
                             mome_dir: str,
@@ -75,6 +80,8 @@ class MoMEModelManager(AdapterModelManager):
     def __init__(
             self,
             model: nn.Module,
+            max_num_seqs: int,
+            max_num_batched_tokens: int,
             mome_config: MoMEConfig,
             device: torch.device
             ) -> None:
@@ -85,8 +92,14 @@ class MoMEModelManager(AdapterModelManager):
         """
         self.mome_config = mome_config
         self.device = device
+        self.max_num_seqs = max_num_seqs
         assert self.capacity >= self.mome_slots
         self.mome_index_to_id: List[Optional[int]] = [None] * self.mome_slots
+        # self.punica_wrapper = get_punica_wrapper(max_num_batched_tokens,
+        #                                          max_batches=self.max_num_seqs,
+        #                                          device=self.device)
+        # Use the simple wrapper for now
+        self.base_indices = torch.tensor([-1])
 
         super().__init__(model)
         self.model = model
@@ -116,16 +129,39 @@ class MoMEModelManager(AdapterModelManager):
         mome_id: int,
     ) -> bool:
         """Activate a specific adapter by its ID."""
-        # Implementation for activating an adapter
+        if mome_id in self._active_adapters:
+            return False
+        first_free_slot = next(
+            ((i, mome_id) for i, mome_id in enumerate(self.mome_index_to_id)
+             if mome_id is None), None)
+        if first_free_slot is None:
+            raise ValueError("No free mome slots")
+        index, _ = first_free_slot
+        self._active_adapters[mome_id] = None
+        mome_model = self._registered_adapters[mome_id]
+        logger.debug("Activating MoME. int id: %d, slot index: %d",
+                     mome_model.id, index)
+        self.mome_index_to_id[index] = mome_model.id
+        for module_name, module in self.modules.items():
+            module_mome = mome_model.get_mome(module_name)
+            if module_mome:
+                module_mome.optimize()
+                module.set_mome(index, module_mome)
+            else:
+                module.reset_mome(index)
         return True
-
-    def deactivate_adapter(self, adapter_id: int) -> bool:
+    
+    def _deactivate_adapter(self, momo_id: int) -> bool:
         """Deactivate a specific adapter by its ID."""
-        # Implementation for deactivating an adapter
-        return True
+        try:
+            index = self.mome_index_to_id.index(momo_id)
+            self.mome_index_to_id[index] = None
+        except ValueError:
+            pass
+
 
     def _add_adapter(self, mome: MoMEModel):
-        pass
+        self._registered_adapters[mome.id] = mome
 
     def add_adapter(self, adapter: MoMEModel) -> bool:
         logger.debug(
@@ -137,48 +173,42 @@ class MoMEModelManager(AdapterModelManager):
                            self._add_adapter)
 
     def _set_adapter_mapping(self, mapping: MoMEMapping) -> None:
-        pass
+        for _, v in self.modules.items():
+            v.set_mapping(mapping)
 
     def _create_mome_modules(self):
         for module_name, module in self.model.named_modules(remove_duplicate=False):
-            pass
-            # if not self._match_target_modules(module_name):
-            #     continue
+            if not self._match_target_modules(module_name):
+                continue
             
-            # # 1. Normal MOME injection
-            # if "mlp" in module_name:
-            #     # add_mome_adaptors_to_mlp_layer
-            #     new_module = replace_submodule(
-            #         self.model, 
-            #         module_name, 
-            #         from_layer(module, self.mome_slots, self.mome_config, self.model.config)
-            #     )
+            # 1. MLP LoRA injection
+            if "mlp" in module_name:
+                # add_mome_adaptors_to_mlp_layer
+                new_module = replace_submodule(
+                    self.model, 
+                    module_name, 
+                    from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+                )
             
-            # # 2. Extra adapter for head
-            # elif "lm_head" in module_name:
-            #     new_module = replace_submodule(
-            #         self.model,
-            #         module_name,
-            #         from_layer_logits_processor(module, self.mome_slots, self.mome_config, self.model.config)
-            #     )
+            # 2. Extra LoRA for head
+            elif "lm_head" in module_name:
+                new_module = replace_submodule(
+                    self.model,
+                    module_name,
+                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, self.model.config)
+                )
             
-            # # 3. Standard MoME adapter
-            # else:
-            #     new_module = replace_submodule(
-            #         self.model,
-            #         module_name,
-            #         from_layer(module, self.mome_slots, self.mome_config, self.model.config)
-            #     )
+            # 3. Standard MoME adapter
+            else:
+                new_module = replace_submodule(
+                    self.model,
+                    module_name,
+                    from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+                )
 
-            # # set index / embeddings
-            # if hasattr(new_module, "set_index"):
-            #     new_module.set_index(self.lamini_index)
-            # if hasattr(new_module, "set_embeddings"):
-            #     new_module.set_embeddings(self.embeddings)
-
-            # self.register_module(module_name, new_module)
-            # All lora layers share the same punica_wrapper based on reference.
-            # new_module.set_mapping(self.punica_wrapper)
+            self.register_module(module_name, new_module)
+            # TODO All mome layers share the same punica_wrapper based on reference.
+            # new_module.set_mapping()
     
     def _match_target_modules(self, module_name: str):
         return any(
@@ -194,6 +224,10 @@ class MoMEModelManager(AdapterModelManager):
         self._last_mapping = set_adapter_mapping(mapping, self._last_mapping,
                                                  self._set_adapter_mapping)
 
+    def deactivate_adapter(self, adapter_id: int) -> bool:
+        return deactivate_adapter(adapter_id, self._active_adapters,
+                                  self._deactivate_adapter)
+    
     def remove_adapter(self, adapter_id: int) -> bool:
         return remove_adapter(adapter_id, self._registered_adapters,
                               self.deactivate_adapter)

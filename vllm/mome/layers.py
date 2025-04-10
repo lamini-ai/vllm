@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, cast
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -83,19 +84,17 @@ class BaseLayerWithMoME(nn.Module):
     def set_mome(
         self,
         index: int,
-        mome_a: torch.Tensor,
-        mome_b: torch.Tensor,
-        embeddings_tensor: Optional[torch.Tensor],
-        bias: Optional[torch.Tensor] = None,
+        adapter_model: Optional[torch.Tensor]
     ):
         """Overwrites mome tensors at index."""
         ...
 
     def set_mapping(
         self,
-        punica_wrapper,
+        mapping,
     ):
-        self.punica_wrapper: PunicaWrapperBase = punica_wrapper
+        self.mapping = mapping
+        # self.punica_wrapper: PunicaWrapperBase = punica_wrapper
 
     @classmethod
     def can_replace_layer(
