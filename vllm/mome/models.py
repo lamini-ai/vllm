@@ -21,7 +21,7 @@ from vllm.logger import init_logger
 
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.model_definition.lamini_index import LaminiIndex
-from vllm.mome.layers import (AttentionLayerWithMoME, MoMEMapping)
+from vllm.mome.layers import (BaseLayerWithMoME, AttentionLayerWithMoME, MoMEMapping)
 from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule, parse_fine_tuned_mome_name)
 
 from vllm.model_executor.models.module_mapping import MultiModelKeys
@@ -202,7 +202,7 @@ class MoMEModelManager(AdapterModelManager):
         if hasattr(self.model, "supported_mome_modules"):
             self.supported_mome_modules = copy.deepcopy(
                 self.model.supported_mome_modules)
-        self.modules: Dict[str, Any] = {}
+        self.modules: Dict[str, BaseLayerWithMoME] = {}
         self._last_mapping: Optional[MoMEMapping] = None
         self._create_mome_modules()
         self.model.mome_manager = self
@@ -312,7 +312,8 @@ class MoMEModelManager(AdapterModelManager):
                 module_name) or target_module == module_name
             for target_module in self.supported_mome_modules)
 
-    def register_module(self, module_name: str, module: Any):
+    def register_module(self, module_name: str, module: "BaseLayerWithMoME"):
+        assert isinstance(module, BaseLayerWithMoME)
         self.modules[module_name] = module
 
     def set_adapter_mapping(self, mapping: MoMEMapping) -> None:
