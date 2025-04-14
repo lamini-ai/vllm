@@ -70,20 +70,17 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
     def _load_adapter(self, mome_request: MoMERequest) -> MoMEModel:
         try:
-            expected_mome_modules = list(set(expected_mome_modules))
+            model = self._adapter_manager.model
+            supported_mome_modules = model.supported_mome_modules
             mome_path = get_adapter_absolute_path(mome_request.mome_path)
-
-            peft_helper = PEFTHelper.from_local_dir(mome_path)
-
-            # Validates the MoME configuration against requirements before
-            # loading weights, throwing an exception if validation fails.
-            peft_helper.validate_legal(self.mome_config)
 
             mome = self._mome_model_cls.from_local_checkpoint(
                 mome_path,
-                peft_helper=peft_helper,
+                supported_mome_modules,
                 mome_model_id=mome_request.mome_int_id,
-                device="cpu")
+                dtype=self.mome_config.dtype,
+                device="cpu"
+                )
 
         except FileNotFoundError as e:
             # FileNotFoundError should be raised if

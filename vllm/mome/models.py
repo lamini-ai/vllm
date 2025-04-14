@@ -1,7 +1,10 @@
 import copy
+import os
 import re
+import json
 from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
 
+import safetensors.torch
 import torch
 from torch import nn
 
@@ -15,8 +18,15 @@ from vllm.adapter_commons.utils import (add_adapter, deactivate_adapter,
 
 from vllm.config import MoMEConfig
 from vllm.logger import init_logger
+
+from vllm.mome.mome import MoMELayerWeights
+from vllm.mome.model_definition.lamini_index import LaminiIndex
 from vllm.mome.layers import (AttentionLayerWithMoME, MoMEMapping)
-from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule)
+from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule, parse_fine_tuned_mome_name)
+
+from vllm.model_executor.models.module_mapping import MultiModelKeys
+from vllm.model_executor.models.utils import PPMissingLayer, WeightsMapper
+from vllm.utils import is_pin_memory_available
 
 logger = init_logger(__name__)
 
@@ -34,6 +44,8 @@ class MoMEModel(AdapterModel):
             self,
             mome_model_id: str,
             rank: int,
+            momes: Dict[str, Any],
+            indexs: Optional[list[int]] = None,
             ) -> None:
         """
         Args:
@@ -45,7 +57,7 @@ class MoMEModel(AdapterModel):
             mome_model_id
             > 0), f"a valid mome id should be greater than 0, got {self.id}"
         self.rank = rank
-        self.momes: Dict[str, Any] = {}
+        self.momes: Dict[str, MoMELayerWeights] = momes
 
     def clone(self, mome_model_id: int) -> "MoMEModel":
         """Return a copy of the object with different ids.
@@ -54,17 +66,55 @@ class MoMEModel(AdapterModel):
         return self.__class__(
             mome_model_id,
             rank=self.rank,
+            momes=self.momes.copy(),
         )
 
-    def get_mome(self, module_name: str) -> Optional[Any]:
+    def get_mome(self, module_name: str) -> Optional[MoMELayerWeights]:
         """Get MoME for a given module by name"""
         return self.momes.get(module_name, None)
-    
+
+    @classmethod
+    def from_mome_tensors(
+        cls,
+        mome_model_id: str,
+        tensors: Dict[str, torch.Tensor],
+        mome_inedx: LaminiIndex,
+        config_content: Dict[str, Union[int, str]],
+        device: str = "cuda",
+        dtype: Optional[torch.dtype] = None,
+    ) -> "MoMEModel":
+        """Create a MoMEModel from tensors."""
+        pin_memory = str(device) == "cpu" and is_pin_memory_available()
+        momes: Dict[str, MoMELayerWeights] = {}
+        for tensor_name, tensor in tensors.items():
+            module_name, is_lora_a, is_mome_attention, _, _ = parse_fine_tuned_mome_name(
+                tensor_name)
+            if module_name not in momes:
+                momes[module_name] = MoMELayerWeights.from_config(
+                    module_name, config_content["r_value"])
+
+            if is_mome_attention:
+                momes[module_name].index = mome_inedx
+                momes[module_name].index_k = config_content["index_k"]
+        
+            if is_lora_a:
+                momes[module_name].lora_a = tensor.to(device=device,
+                                                      dtype=dtype).t()
+                if pin_memory:
+                    momes[module_name].lora_a = momes[
+                        module_name].lora_a.pin_memory()
+            else:
+                momes[module_name].lora_b = tensor.to(device=device,
+                                                      dtype=dtype).t()
+
+        return cls(mome_model_id, config_content["r_value"], momes)
+
     @classmethod
     def from_local_checkpoint(cls,
                             mome_dir: str,
-                            peft_helper: Any,
+                            expected_mome_modules: List[str],
                             mome_model_id: str,
+                            dtype: Optional[torch.dtype] = None,
                             device: str = "cuda",
                             ) -> "MoMEModel":
         """Create a MoMEModel from a local checkpoint.
@@ -73,7 +123,53 @@ class MoMEModel(AdapterModel):
             mome_dir: the directory of the local checkpoint.
             mome_model_id: the id (model name) of the MoME model.
         """
-        return None
+
+        mome_tensor_path = os.path.join(mome_dir, "adapter_model.safetensors")
+        mome_bin_file_path = os.path.join(mome_dir, "adapter_model.bin")
+
+        index_path = os.path.join(mome_dir, "..", "index")
+        mome_index = LaminiIndex.load_index(index_path, mome_dir, cache_dir="cache")
+
+        config_path = os.path.join(mome_dir, "adapter_config.json")
+        if os.path.isfile(config_path):
+            config_content = json.loads(config_path)
+        else:
+            raise ValueError(f"{mome_dir} doesn't contain adapter_config.json")
+
+        if os.path.isfile(mome_tensor_path):
+            tensors: Dict[str, torch.Tensor] = {}
+            unexpected_modules = []
+            with safetensors.safe_open(mome_tensor_path,
+                                       framework="pt") as f:  # type: ignore
+                for mome_module in f.keys():  # noqa
+                    module_name, _, _, _, _ = parse_fine_tuned_mome_name(mome_module)
+                    part_name = module_name.split(".")[-1]
+                    # here part_name should be one of ["mome_attention", "mlp", "lm_head"]
+                    if part_name not in expected_mome_modules:
+                        unexpected_modules.append(module_name)
+                if unexpected_modules:
+                    raise ValueError(
+                        f"While loading {mome_dir}, expected"
+                        f" target modules in {expected_mome_modules}"
+                        f" but received {unexpected_modules}."
+                        f" Please verify that the loaded MoME module is correct"
+                    )
+                for module in f.keys():  # noqa
+                    tensors[module] = f.get_tensor(module)
+        elif os.path.isfile(mome_bin_file_path):
+            unexpected_modules = []
+            tensors = torch.load(mome_bin_file_path, map_location=device)
+        else:
+            raise ValueError(f"{mome_dir} doesn't contain tensors")
+
+        return cls.from_mome_tensors(
+            mome_model_id=get_mome_id()
+            if mome_model_id is None else mome_model_id,
+            tensors=tensors,
+            mome_inedx=mome_index,
+            config_content=config_content,
+            dtype=dtype,
+            device=device)
 
 class MoMEModelManager(AdapterModelManager):
     """A manager that manages multiple MoME tuned models."""
@@ -139,7 +235,7 @@ class MoMEModelManager(AdapterModelManager):
         index, _ = first_free_slot
         self._active_adapters[mome_id] = None
         mome_model = self._registered_adapters[mome_id]
-        logger.debug("Activating MoME. int id: %d, slot index: %d",
+        logger.info("Activating MoME. int id: %d, slot index: %d",
                      mome_model.id, index)
         self.mome_index_to_id[index] = mome_model.id
         for module_name, module in self.modules.items():
@@ -159,7 +255,6 @@ class MoMEModelManager(AdapterModelManager):
         except ValueError:
             pass
 
-
     def _add_adapter(self, mome: MoMEModel):
         self._registered_adapters[mome.id] = mome
 
@@ -173,14 +268,14 @@ class MoMEModelManager(AdapterModelManager):
                            self._add_adapter)
 
     def _set_adapter_mapping(self, mapping: MoMEMapping) -> None:
-        for _, v in self.modules.items():
-            v.set_mapping(mapping)
+        for _, module in self.modules.items():
+            module.set_mapping(mapping)
 
     def _create_mome_modules(self):
         for module_name, module in self.model.named_modules(remove_duplicate=False):
             if not self._match_target_modules(module_name):
                 continue
-            
+
             # 1. MLP LoRA injection
             if "mlp" in module_name:
                 # add_mome_adaptors_to_mlp_layer
@@ -189,7 +284,7 @@ class MoMEModelManager(AdapterModelManager):
                     module_name, 
                     from_layer(module, self.mome_slots, self.mome_config, self.model.config)
                 )
-            
+
             # 2. Extra LoRA for head
             elif "lm_head" in module_name:
                 new_module = replace_submodule(
@@ -197,7 +292,7 @@ class MoMEModelManager(AdapterModelManager):
                     module_name,
                     from_layer_logits_processor(module, self.mome_slots, self.mome_config, self.model.config)
                 )
-            
+
             # 3. Standard MoME adapter
             else:
                 new_module = replace_submodule(
@@ -209,7 +304,7 @@ class MoMEModelManager(AdapterModelManager):
             self.register_module(module_name, new_module)
             # TODO All mome layers share the same punica_wrapper based on reference.
             # new_module.set_mapping()
-    
+
     def _match_target_modules(self, module_name: str):
         return any(
             re.match(
@@ -227,7 +322,7 @@ class MoMEModelManager(AdapterModelManager):
     def deactivate_adapter(self, adapter_id: int) -> bool:
         return deactivate_adapter(adapter_id, self._active_adapters,
                                   self._deactivate_adapter)
-    
+
     def remove_adapter(self, adapter_id: int) -> bool:
         return remove_adapter(adapter_id, self._registered_adapters,
                               self.deactivate_adapter)

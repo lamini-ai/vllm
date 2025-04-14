@@ -16,7 +16,8 @@ from vllm.logger import init_logger
 # yapf conflicts with isort for this block
 # yapf: disable
 
-# from vllm.mome.layers import ()
+from vllm.mome.layers import (BaseLayerWithMoME, BaseMoMEAttentionLayer,
+                              LoraMLPAdaptor, LoraHeadAdaptor)
 # yapf: enable
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
@@ -24,8 +25,10 @@ from vllm.model_executor.models.utils import WeightsMapper
 
 logger = init_logger(__name__)
 
-_all_lora_classes: Set[Type[Any]] = {
-    
+_all_mome_classes: Set[Type[BaseLayerWithMoME]] = {
+    BaseMoMEAttentionLayer,
+    LoraMLPAdaptor,
+    LoraHeadAdaptor
 }
 
 
@@ -86,48 +89,42 @@ def get_hidden_size(layer):
     raise ValueError(f"Can't determine hidden size for layer type: {type(layer)}")
 
 
-def parse_fine_tuned_lora_name(
+def parse_fine_tuned_mome_name(
         name: str,
         weights_mapper: Optional[WeightsMapper] = None
 ) -> Tuple[str, bool, bool]:
-    """Parse the name of lora weights.
+    """Parse the name of mome weights.
 
     args:
-        name: the name of the fine-tuned LoRA, e.g.
-            base_model.model.dense1.weight
+        name: the name of the fine-tuned MoMe, e.g.
+            mome_model.lm_head.layer.weight
         weights_mapper: maps the name of weight, e.g.
             `model.` -> `language_model.model.`,
     return:
-        Tuple(module_name, is_lora_a):
+        Tuple(module_name, is_lora_a, is_mome_attention, is_mlp_lora, is_head_lora):
             module_name: the name of the module, e.g. model.dense1,
-            is_lora_a whether the tensor is lora_a or lora_b.
-            is_bias whether the tensor is lora bias.
+            is_lora_a whether the tensor is input layer or output layer.
+            is_mome_attention whether the tensor is mome_attention lora .
+            is_mlp_lora whether the tensor is mlp_lora.
+            is_head_lora whether the tensor is head_lora.
     """
 
-    # LoRA weight qualified name always starts with `base_model.model.`,
-    # so we remove the prefix `base_model.model.` to make the following
-    # mapping correctly.
-    if "base_model.model." in name:
-        name = name.replace("base_model.model.", "")
-        name = weights_mapper._map_name(name) if weights_mapper else name
-        # recover the prefix `base_model.model.`
-        name = "base_model.model." + name
-
     parts = name.split(".")
-    if parts[-1] == "weight" and (parts[-2] == "lora_A"
-                                  or parts[-2] == "lora_B"):
-        new_name = ".".join(parts[2:-2])
-        return new_name, parts[-2] == "lora_A", False
+    is_mome_attention = False
+    is_mlp_lora = False
+    is_head_lora = False
 
-    if parts[-1] == "lora_embedding_A" or parts[-1] == "lora_embedding_B":
-        new_name = ".".join(parts[2:-1])
-        return new_name, parts[-1] == "lora_embedding_A", False
-
-    if parts[-1] == "bias":
-        new_name = ".".join(parts[2:-2])
-        return new_name, False, True
-
-    raise ValueError(f"{name} is unsupported LoRA weight")
+    if parts[-1] == "weight":
+        if parts[-3] == "mome_attention"
+            is_mome_attention = True
+        elif parts[-3] == "mlp":
+            is_mlp_lora = True
+        elif parts[-3] == "lm_head":
+            is_head_lora = True
+        new_name = ".".join(parts[1:-2])
+        return new_name, "in" in parts[-2], is_mome_attention, is_mlp_lora, is_head_lora
+    
+    raise ValueError(f"{name} is unsupported MoME weight")
 
 
 def is_regex_target_modules(load_modules: Union[str, List[str]],

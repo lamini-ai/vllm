@@ -459,9 +459,9 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
     }
     embedding_padding_modules = ["lm_head"]
 
-    # MoME specific attributes
+    # MoME specific attributes, name not match official name
     supported_mome_modules = [
-        "qkv_proj", "lm_head"
+        "mome_attention", "mlp", "lm_head"
     ]
 
     # Mistral/Llama models can also be loaded with --load-format mistral

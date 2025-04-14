@@ -360,8 +360,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.device = _get_mome_device(self.base_layer)
         # self.output_size = self.base_layer.output_size
         # Get the hidden size
-        # hidden_size = get_hidden_size(layer)
-        hidden_size = self.input_size
+        hidden_size = get_hidden_size(base_layer)
+        # hidden_size = self.input_size
         # Add a mome attention layer
         self.mlp_mome_in = nn.Linear(hidden_size, r_value, bias=False)
         self.mlp_mome_out = nn.Linear(r_value, hidden_size, bias=False)
