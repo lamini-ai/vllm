@@ -78,7 +78,7 @@ class MoMEModel(AdapterModel):
         cls,
         mome_model_id: str,
         tensors: Dict[str, torch.Tensor],
-        mome_inedx: LaminiIndex,
+        mome_index: LaminiIndex,
         config_content: Dict[str, Union[int, str]],
         device: str = "cuda",
         dtype: Optional[torch.dtype] = None,
@@ -94,9 +94,9 @@ class MoMEModel(AdapterModel):
                     module_name, config_content["r_value"])
 
             if is_mome_attention:
-                momes[module_name].index = mome_inedx
+                momes[module_name].index = mome_index
                 momes[module_name].index_k = config_content["index_k"]
-        
+
             if is_lora_a:
                 momes[module_name].lora_a = tensor.to(device=device,
                                                       dtype=dtype).t()
@@ -166,7 +166,7 @@ class MoMEModel(AdapterModel):
             mome_model_id=get_mome_id()
             if mome_model_id is None else mome_model_id,
             tensors=tensors,
-            mome_inedx=mome_index,
+            mome_index=mome_index,
             config_content=config_content,
             dtype=dtype,
             device=device)
@@ -246,7 +246,7 @@ class MoMEModelManager(AdapterModelManager):
             else:
                 module.reset_mome(index)
         return True
-    
+
     def _deactivate_adapter(self, momo_id: int) -> bool:
         """Deactivate a specific adapter by its ID."""
         try:
@@ -280,8 +280,8 @@ class MoMEModelManager(AdapterModelManager):
             if "mlp" in module_name:
                 # add_mome_adaptors_to_mlp_layer
                 new_module = replace_submodule(
-                    self.model, 
-                    module_name, 
+                    self.model,
+                    module_name,
                     from_layer(module, self.mome_slots, self.mome_config, self.model.config)
                 )
 
