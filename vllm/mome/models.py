@@ -44,7 +44,7 @@ class MoMEModel(AdapterModel):
             self,
             mome_model_id: str,
             rank: int,
-            momes: Dict[str, Any],
+            momes: Dict[str, MoMELayerWeights],
             indexs: Optional[list[int]] = None,
             ) -> None:
         """
