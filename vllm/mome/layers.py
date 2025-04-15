@@ -394,7 +394,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         output_bias = (self.base_layer.bias
                        if self.base_layer.skip_bias_add else None)
         return output, output_bias
-    
+
     def apply(self,
               x: torch.Tensor,
               bias: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -423,6 +423,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
 
 
 class LoraHeadAdaptor(BaseLayerWithMoME):
+    # TODO: update LoraHeadAdaptor init to work with from_layer_logits_processor
     def __init__(self, base_layer: LinearBase, r_value: int):
         super().__init__()
         self.base_layer = base_layer
@@ -462,7 +463,7 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         output_bias = (self.base_layer.bias
                        if self.base_layer.skip_bias_add else None)
         return output, output_bias
-    
+
     def apply(self,
               x: torch.Tensor,
               bias: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -477,4 +478,3 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
     # @property
     # def bias(self):
     #     return self.layer.bias
-

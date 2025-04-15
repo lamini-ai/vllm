@@ -49,6 +49,21 @@ def from_layer(layer: nn.Module,
     return layer
 
 
+def from_layer_logits_processor(
+    layer: LogitsProcessor,
+    lm_head: ParallelLMHead,
+    max_momes: int,
+    mome_config: MoMEConfig,
+    model_config: Optional[PretrainedConfig] = None,
+) -> LoraHeadAdaptor:
+    # TODO: update LoraHeadAdaptor init to work here
+    ret = LoraHeadAdaptor(layer, lm_head.embedding_dim,
+                                  lm_head.weight.dtype, lm_head.weight.device,
+                                  lm_head.get_sharded_to_full_mapping())
+    ret.create_mome_weights(max_momes, mome_config, model_config)
+    return ret
+
+
 def replace_submodule(model: nn.Module, module_name: str,
                       new_module: nn.Module) -> nn.Module:
     """Replace a submodule in a model with a new module."""
@@ -66,13 +81,13 @@ def get_hidden_size(layer):
     if hasattr(layer, "hidden_size"):
         logger.debug(f"hidden size: {layer.hidden_size} from layer.hidden_size")
         return layer.hidden_size
-    
+
     def get_proj_hidden(p):
         try:
             return list(p.parameters())[0].shape[1]
         except Exception:
             return None
-        
+
     for name in ["q_proj", "out_proj", "c_fc", "fc2", "gate_up_proj", "c_proj"]:
         if hasattr(layer, name):
             sub = getattr(layer, name)
@@ -123,16 +138,16 @@ def parse_fine_tuned_mome_name(
             is_head_lora = True
         new_name = ".".join(parts[1:-2])
         return new_name, "in" in parts[-2], is_mome_attention, is_mlp_lora, is_head_lora
-    
+
     raise ValueError(f"{name} is unsupported MoME weight")
 
 
 def is_regex_target_modules(load_modules: Union[str, List[str]],
                             expected_lora_modules: List[str]) -> bool:
     """
-    PEFT supports passing `target_modules` in the form of regular expressions, 
-    such as `model.*(q_proj|k_proj|v_proj)$`. This function is mainly used to 
-    determine whether the suffix in the regular expression is present in the 
+    PEFT supports passing `target_modules` in the form of regular expressions,
+    such as `model.*(q_proj|k_proj|v_proj)$`. This function is mainly used to
+    determine whether the suffix in the regular expression is present in the
     `expected_lora_modules`.
     """
 
