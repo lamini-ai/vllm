@@ -21,7 +21,7 @@ from vllm.logger import init_logger
 
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.model_definition.lamini_index import LaminiIndex
-from vllm.mome.layers import (BaseLayerWithMoME, MoMEAttentionLayer, MoMEMapping)
+from vllm.mome.layers import (BaseLayerWithMoME, MoMEMapping)
 from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule, parse_fine_tuned_mome_name)
 
 from vllm.model_executor.models.module_mapping import MultiModelKeys
@@ -206,7 +206,8 @@ class MoMEModel(AdapterModel):
 
         config_path = os.path.join(mome_dir, "adapter_config.json")
         if os.path.isfile(config_path):
-            config_content = json.loads(config_path)
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_content = json.load(f)
         else:
             raise ValueError(f"{mome_dir} doesn't contain adapter_config.json")
 
