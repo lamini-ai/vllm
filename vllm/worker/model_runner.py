@@ -114,6 +114,8 @@ class ModelInputForGPU(ModelRunnerInputBase):
             "input_positions": self.input_positions,
             "lora_requests": self.lora_requests,
             "lora_mapping": self.lora_mapping,
+            "mome_requests": self.mome_requests,
+            "mome_mapping": self.mome_mapping,
             "multi_modal_kwargs": self.multi_modal_kwargs,
             "prompt_adapter_mapping": self.prompt_adapter_mapping,
             "prompt_adapter_requests": self.prompt_adapter_requests,
@@ -164,6 +166,8 @@ class ModelInputForGPUWithSamplingMetadata(ModelInputForGPU):
             "input_positions": self.input_positions,
             "lora_requests": self.lora_requests,
             "lora_mapping": self.lora_mapping,
+            "mome_requests": self.mome_requests,
+            "mome_mapping": self.mome_mapping,
             "multi_modal_kwargs": self.multi_modal_kwargs,
             "prompt_adapter_mapping": self.prompt_adapter_mapping,
             "prompt_adapter_requests": self.prompt_adapter_requests,
@@ -475,6 +479,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self._compute_for_prefix_cache_hit,
             self._compute_for_sliding_window,
             self._compute_lora_input,
+            self._compute_mome_input,
         ]
         # Compute functions for each sequence group.
         # WARNING: The order of the functions matters!
@@ -679,6 +684,26 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             inter_data.lora_prompt_mapping.append([lora_id])
         else:
             inter_data.lora_prompt_mapping.append([])
+
+    def _compute_mome_input(self, inter_data: InterDataForSeqGroup,
+                            seq_idx: int,
+                            seq_group_metadata: SequenceGroupMetadata):
+        """If MoME adapter is enabled, compute MoME index and prompt mapping."""
+        if not self.enable_mome:
+            return
+
+        mome_id = seq_group_metadata.mome_int_id
+        if mome_id > 0:
+            inter_data.mome_requests.add(seq_group_metadata.mome_request)
+        query_len = inter_data.query_lens[seq_idx]
+        inter_data.mome_index_mapping.append([mome_id] * query_len)
+        sampling_params = seq_group_metadata.sampling_params
+        if sampling_params and sampling_params.prompt_logprobs is not None:
+            inter_data.mome_prompt_mapping.append([mome_id] * query_len)
+        elif not self.chunked_prefill_enabled or seq_group_metadata.do_sample:
+            inter_data.mome_prompt_mapping.append([mome_id])
+        else:
+            inter_data.mome_prompt_mapping.append([])
 
     def _compute_prompt_adapter_input(
             self, inter_data: InterDataForSeqGroup,
@@ -1002,7 +1027,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                 for inter_data in self.inter_data_list
             ])
 
-            mome_mapping = LoRAMapping(
+            mome_mapping = MoMEMapping(
                 **dict(index_mapping=mome_index_mapping,
                        prompt_mapping=mome_prompt_mapping,
                        is_prefill=not self.decode_only))

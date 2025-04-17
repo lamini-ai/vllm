@@ -25,6 +25,7 @@ from vllm.inputs import PromptType
 from vllm.inputs.preprocess import InputPreprocessor
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor.guided_decoding import (
     get_guided_decoding_logits_processor)
 from vllm.model_executor.layers.sampler import SamplerOutput
@@ -932,6 +933,7 @@ class AsyncLLMEngine(EngineClient):
         sampling_params: SamplingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -948,6 +950,7 @@ class AsyncLLMEngine(EngineClient):
             sampling_params: The sampling parameters of the request.
             request_id: The unique id of the request.
             lora_request: LoRA request to use for generation, if any.
+            mome_request: MoME request to use for generation, if any.
             trace_headers: OpenTelemetry trace headers.
             prompt_adapter_request: Prompt Adapter request to use
                                             for generation, if any.
@@ -1008,6 +1011,7 @@ class AsyncLLMEngine(EngineClient):
                     prompt,
                     sampling_params,
                     lora_request=lora_request,
+                    mome_request=mome_request,
                     trace_headers=trace_headers,
                     prompt_adapter_request=prompt_adapter_request,
                     priority=priority,
@@ -1023,6 +1027,7 @@ class AsyncLLMEngine(EngineClient):
         pooling_params: PoolingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         priority: int = 0,
     ) -> AsyncGenerator[PoolingRequestOutput, None]:
@@ -1038,6 +1043,7 @@ class AsyncLLMEngine(EngineClient):
             pooling_params: The pooling parameters of the request.
             request_id: The unique id of the request.
             lora_request: LoRA request to use for generation, if any.
+            mome_request: MoME request to use for generation, if any.
             trace_headers: OpenTelemetry trace headers.
             priority: The priority of the request.
                 Only applicable with priority scheduling.
@@ -1094,6 +1100,7 @@ class AsyncLLMEngine(EngineClient):
                     prompt,
                     pooling_params,
                     lora_request=lora_request,
+                    mome_request=mome_request,
                     trace_headers=trace_headers,
                     priority=priority,
             ):
@@ -1190,6 +1197,8 @@ class AsyncLLMEngine(EngineClient):
     async def add_lora(self, lora_request: LoRARequest) -> None:
         self.engine.add_lora(lora_request)
 
+    async def add_mome(self, lora_request: LoRARequest) -> None:
+        self.engine.add_mome(lora_request)
 
 # TODO(v1): Remove this class proxy when V1 goes default.
 if envs.VLLM_USE_V1:

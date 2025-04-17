@@ -16,6 +16,7 @@ import torch
 
 from vllm.inputs import SingletonInputs, SingletonInputsAdapter
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.multimodal import MultiModalDataDict, MultiModalPlaceholderDict
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -398,6 +399,7 @@ class Sequence:
             block size used by the block manager and cache engine.
         eos_token_id: The end-of-sequence (EOS) token id recognized by this LLM.
         lora_request: LoRA request.
+        mome_request: MoME adapter request.
         prompt_adapter_request: Prompt Adapter request.
     """
 
@@ -408,6 +410,7 @@ class Sequence:
         block_size: int,
         eos_token_id: Optional[int] = None,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> None:
         self.seq_id = seq_id
@@ -415,6 +418,7 @@ class Sequence:
         self.block_size = block_size
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
+        self.mome_request = mome_request
         self.prompt_adapter_request = prompt_adapter_request
 
         self.data = SequenceData.from_seqs(self.prompt_token_ids)
@@ -631,6 +635,7 @@ class SequenceGroup:
         sampling_params: The sampling parameters used to generate the outputs.
         arrival_time: The arrival time of the request.
         lora_request: LoRA request.
+        mome_request: MoME adapter request.
         pooling_params: The parameters used to generate the pooler
             for a pooling model.
         pooled_data: The extracted hidden states from a pooling model.
@@ -648,6 +653,7 @@ class SequenceGroup:
         arrival_time: float,
         sampling_params: Optional[SamplingParams] = None,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         pooling_params: Optional[PoolingParams] = None,
         pooled_data: Optional[torch.Tensor] = None,
         encoder_seq: Optional[Sequence] = None,
@@ -670,6 +676,7 @@ class SequenceGroup:
                                       time_in_queue=None)
         self.last_token_latency = 0.0
         self.lora_request = lora_request
+        self.mome_request = mome_request
         self.prompt_logprobs: Optional[PromptLogprobs] = None
         self.state = SequenceGroupState()
         self.pooling_params = pooling_params
@@ -928,6 +935,7 @@ class SequenceGroupMetadata(
         token_chunk_size: The number of tokens to be processed (per sequence).
             None if chunking is not required.
         lora_request: LoRA request.
+        mome_request: MoME adapter request.
         computed_block_nums: The block numbers that are already computed,
             used in prefix caching.
         state: Internal state tied to this sequence group.
@@ -953,6 +961,7 @@ class SequenceGroupMetadata(
     do_sample: bool = True
     pooling_params: Optional[PoolingParams] = None
     lora_request: Optional[LoRARequest] = None
+    mome_request: Optional[MoMERequest] = None
     computed_block_nums: Optional[List[int]] = None
     state: Optional[SequenceGroupState] = msgspec.field(
         default_factory=lambda: SequenceGroupState())
@@ -985,7 +994,11 @@ class SequenceGroupMetadata(
     @property
     def lora_int_id(self) -> int:
         return self.lora_request.lora_int_id if self.lora_request else 0
-
+    
+    @property
+    def mome_int_id(self) -> int:
+        return self.mome_request.mome_int_id if self.mome_request else 0
+    
     @property
     def prompt_adapter_id(self) -> int:
         return self.prompt_adapter_request.prompt_adapter_id \
@@ -1432,6 +1445,7 @@ class ParallelSampleSequenceGroup(SequenceGroupBase):
             arrival_time=seq_group.arrival_time,
             sampling_params=original_params,
             lora_request=seq_group.lora_request,
+            mome_request=seq_group.mome_request,
             pooling_params=seq_group.pooling_params,
             pooled_data=seq_group.pooled_data,
             encoder_seq=seq_group.encoder_seq,

@@ -95,18 +95,18 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
         return mome
 
-    def add_dummy_mome(self, mome_request: MoMERequest, rank: int) -> bool:
-        if mome_request.mome_int_id in self.list_adapters():
-            return False
-        if isinstance(self._cached_dummy_mome, MoMEModel):
-            dummy_mome = self._cached_dummy_mome.clone(
-                mome_request.mome_int_id)
-        else:
-            dummy_mome = self._adapter_manager.create_dummy_mome(
-                mome_request.mome_int_id, rank, 1, self.embedding_modules)
-            if self._cached_dummy_mome is None:
-                self._cached_dummy_mome = dummy_mome
-        return self._adapter_manager.add_adapter(dummy_mome)
+    # def add_dummy_mome(self, mome_request: MoMERequest, rank: int) -> bool:
+    #     if mome_request.mome_int_id in self.list_adapters():
+    #         return False
+    #     if isinstance(self._cached_dummy_mome, MoMEModel):
+    #         dummy_mome = self._cached_dummy_mome.clone(
+    #             mome_request.mome_int_id)
+    #     else:
+    #         dummy_mome = self._adapter_manager.create_dummy_mome(
+    #             mome_request.mome_int_id, rank, 1, self.embedding_modules)
+    #         if self._cached_dummy_mome is None:
+    #             self._cached_dummy_mome = dummy_mome
+    #     return self._adapter_manager.add_adapter(dummy_mome)
 
     def pin_adapter(self, adapter_id: int) -> bool:
         return self._adapter_manager.pin_adapter(adapter_id)

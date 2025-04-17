@@ -2,7 +2,7 @@ import copy
 import os
 import re
 import json
-from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Type, Union, Tuple
 
 import safetensors.torch
 import torch
@@ -21,7 +21,7 @@ from vllm.logger import init_logger
 
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.model_definition.lamini_index import LaminiIndex
-from vllm.mome.layers import (BaseLayerWithMoME, AttentionLayerWithMoME, MoMEMapping)
+from vllm.mome.layers import (BaseLayerWithMoME, MoMEAttentionLayer, MoMEMapping)
 from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule, parse_fine_tuned_mome_name)
 
 from vllm.model_executor.models.module_mapping import MultiModelKeys
@@ -37,6 +37,80 @@ def get_mome_id():
     global _GLOBAL_MOME_ID
     _GLOBAL_MOME_ID += 1
     return _GLOBAL_MOME_ID
+
+
+def convert_mapping(
+    mapping: MoMEMapping,
+    mome_index_to_id: List[Optional[int]],
+    max_momes: int,
+    device: torch.device,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+           Optional[torch.Tensor], List[int]]:
+    """Converts MoMEMapping to index tensors.
+
+    Args:
+        mapping: M o MEMapping mapping rows in a batch to MoME ids.
+        mome_index_to_id: List mapping MoME ids to MoME indices.
+        max_momes: Maximum number of MoMEs.
+        device: Device to use for the tensors.
+
+    Returns:
+        A tuple of tensors:
+            base_indices: Tensor of shape [batch_size] mapping batch rows to
+                MoME indices.
+            sampler_indices: Tensor of shape [batch_size] mapping requests to
+                MoME indices for sampler. For generation, this will be the
+                same as base_indicies. For prefill, this will map requests
+                to MoME indices.
+            embeddings_indices: Tensor of shape [2, batch_size] mapping
+                requests to embedding indices. First row is for embeddings
+                added by the MoMEs, second row is for the MoME.lora_a
+                embeddings.
+            indices_len: List of lengths of the above tensors. It contains
+                (base_indices, sampler_indices, embeddings_indices).
+    """
+    index_mapping_indices: List[int] = list(mapping.index_mapping).copy()
+    embedding_indices = index_mapping_indices.copy()
+    lora_indices = index_mapping_indices.copy()
+
+    prompt_mapping: List[int] = [
+        mome_index_to_id.index(x) if x > 0 else -1
+        for x in mapping.prompt_mapping
+    ]
+    lora_idx = None
+    for i in range(len(index_mapping_indices)):
+        lora_idx = (mome_index_to_id.index(index_mapping_indices[i])
+                    if index_mapping_indices[i] > 0 else -1)
+        embedding_indices[i] = lora_idx if index_mapping_indices[i] > 0 else 0
+        lora_indices[i] = lora_idx
+
+    indices_list: List[Union[List[int], torch.Tensor]] = [
+        index_mapping_indices,
+        lora_indices,
+        embedding_indices,
+    ]
+    indices = torch.tensor(indices_list, dtype=torch.long, device=device)
+    prompt_mapping_tensor = torch.tensor(prompt_mapping,
+                                         dtype=torch.long,
+                                         device=device)
+    embeddings_indices = indices[2].unsqueeze(0)
+    embeddings_indices[embeddings_indices == -1] = max_momes - 1
+    base_indices = indices[1]
+    sampler_indices = prompt_mapping_tensor
+
+    # Contain length of indices tensors. Used to index into each tensor.
+    indices_len = [
+        base_indices.shape[-1],
+        sampler_indices.shape[-1],
+        embeddings_indices.shape[-1],
+    ]
+
+    return (
+        base_indices,
+        sampler_indices,
+        embeddings_indices,
+        indices_len,
+    )
 
 class MoMEModel(AdapterModel):
     """A MoME tuned model."""
@@ -196,12 +270,17 @@ class MoMEModelManager(AdapterModelManager):
         #                                          device=self.device)
         # Use the simple wrapper for now
         self.base_indices = torch.tensor([-1])
+        self.sampler_indices = torch.tensor([-1])
+        self.base_embedding_indices = torch.tensor([])
+        self.indices_len = [0, 0, 0]
 
         super().__init__(model)
         self.model = model
         if hasattr(self.model, "supported_mome_modules"):
             self.supported_mome_modules = copy.deepcopy(
                 self.model.supported_mome_modules)
+            self.packed_modules_mapping = copy.deepcopy(
+                self.model.packed_modules_mapping)
         self.modules: Dict[str, BaseLayerWithMoME] = {}
         self._last_mapping: Optional[MoMEMapping] = None
         self._create_mome_modules()
@@ -241,8 +320,9 @@ class MoMEModelManager(AdapterModelManager):
         for module_name, module in self.modules.items():
             module_mome = mome_model.get_mome(module_name)
             if module_mome:
-                module_mome.optimize()
-                module.set_mome(index, module_mome)
+                module.set_mome(index, module_mome.lora_a,
+                                 module_mome.lora_b, module_mome.rank,
+                                 module_mome.index, module_mome.index_k)
             else:
                 module.reset_mome(index)
         return True
@@ -261,49 +341,57 @@ class MoMEModelManager(AdapterModelManager):
     def add_adapter(self, adapter: MoMEModel) -> bool:
         logger.debug(
             "Adding mome. Model id: %d, "
-            "int id: %d, "
-            "scaling factor: %s", adapter.id, adapter.id,
-            adapter.scaling_factor)
+            "int id: %d, ", adapter.id, adapter.id)
         return add_adapter(adapter, self._registered_adapters, self.capacity,
                            self._add_adapter)
 
     def _set_adapter_mapping(self, mapping: MoMEMapping) -> None:
+        (
+            base_indices,
+            sampler_indices,
+            embeddings_indices,
+            indices_len
+        ) = convert_mapping(
+            mapping,  self.mome_index_to_id, self.mome_slots + 1, self.device)
         for _, module in self.modules.items():
-            module.set_mapping(mapping)
+            module.set_mapping(base_indices, sampler_indices, embeddings_indices, indices_len)
 
     def _create_mome_modules(self):
         for module_name, module in self.model.named_modules(remove_duplicate=False):
-            if not self._match_target_modules(module_name):
+            if isinstance(module, PPMissingLayer):
                 continue
-
+            if not self._match_target_modules(module_name):
+                continue 
+            parts = module_name.split(".")[-1]
+            packed_moduled_lst = self.packed_modules_mapping.get(parts, [])
             # 1. MLP LoRA injection
             if "mlp" in module_name:
                 # add_mome_adaptors_to_mlp_layer
                 new_module = replace_submodule(
-                    self.model,
-                    module_name,
-                    from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+                    self.model, 
+                    module_name, 
+                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
                 )
-
             # 2. Extra LoRA for head
             elif "lm_head" in module_name:
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, self.model.config)
+                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
                 )
-
             # 3. Standard MoME adapter
             else:
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer(module, self.mome_slots, self.mome_config, self.model.config)
+                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
                 )
-
             self.register_module(module_name, new_module)
             # TODO All mome layers share the same punica_wrapper based on reference.
-            # new_module.set_mapping()
+            new_module.set_mapping(self.base_indices,
+                                   self.sampler_indices,
+                                   self.base_embedding_indices,
+                                   self.indices_len)
 
     def _match_target_modules(self, module_name: str):
         return any(

@@ -91,10 +91,15 @@ class BaseLayerWithMoME(nn.Module):
 
     def set_mapping(
         self,
-        mapping,
+        base_indices: torch.Tensor,
+        sampler_indices: torch.Tensor,
+        embeddings_indices: torch.Tensor,
+        indices_len
     ):
-        self.mapping = mapping
-        # self.punica_wrapper: PunicaWrapperBase = punica_wrapper
+        self.indices_gpu = base_indices.to(device=self.device)
+        self.sampler_indices_gpu: sampler_indices.to(device=self.device)
+        self.embedding_indices_gpu = embeddings_indices.to(device=self.device)
+        self.indices_len = indices_len
 
     @classmethod
     def can_replace_layer(
@@ -109,29 +114,82 @@ class BaseLayerWithMoME(nn.Module):
 
 
 class BaseMoMEAttentionLayer(BaseLayerWithMoME):
-    def __init__(
-        self,
-        base_layer,
-        embeddings,
-        index,
-        r_value,
-        mome_embedding_seq_length,
-        index_k,
-    ):
+    def __init__(self, base_layer: ReplicatedLinear):
         super().__init__()
         self.base_layer = base_layer
+        self.input_size = self.base_layer.input_size
+        self.output_size = self.base_layer.output_size
         self.device = _get_mome_device(self.base_layer)
 
-        # Add a mome attention layer
-        #print("layer:", dir(layer))
-        self.mome_attention = MoMEAttentionLayer(
-            hidden_size=get_hidden_size(base_layer),
-            r_value=r_value,
-            mome_embedding_seq_length=mome_embedding_seq_length,
+        self.indices_gpu: torch.Tensor
+        self.embedding_indices_gpu: torch.Tensor
+        self.sampler_indices_gpu: torch.Tensor
+        self.indices_len: List[int] = []
+
+        self.mome_attention = None
+
+    def create_mome_weights(
+        self,
+        max_loras: int,
+        mome_config: MoMEConfig,
+        model_config: Optional[PretrainedConfig] = None,
+    ) -> None:
+        self.mome_config = mome_config
+
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.output_size
+        self.lora_a_tensors = torch.zeros(
+            (                
+                max_loras,
+                lora_a_out_size,
+                self.input_size,
+            ),
+            dtype=mome_config.mome_dtype,
             device=self.device,
-            embeddings=embeddings,
-            index=index,
-            index_k=index_k,
+        )
+        self.lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_b_out_size,
+                lora_a_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        
+        self.mome_attention_list = []
+
+    def reset_mome(self, index: int):
+        # self.lora_a_tensors[index] = 0
+        # self.lora_b_tensors[index] = 0
+        self.mome_attention_list[index] = None
+
+    def set_mome(
+        self,
+        index: int,
+        lora_a: torch.Tensor,
+        lora_b: torch.Tensor,
+        rank: int,
+        mome_index: LaminiIndex,
+        mome_index_k: int,
+    ):
+        # Except for QKVParallelLinearWithLora and
+        # MergedColumnParallelLinearWithLoRA, all other linear LoRA layers
+        # store weights in a tuple of size 1. These two layers will
+        # override this function.
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        self.reset_mome(index)
+        # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
+        #                            lora_a.T, non_blocking=True)
+        # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
+        #                            lora_b.T, non_blocking=True)
+        
+        self.mome_attention_list[index] = MoMEAttentionLayer(
+            hidden_size=get_hidden_size(self.base_layer),
+            r_value=rank,
+            device=self.device,
+            index=mome_index,
+            index_k=mome_index_k,
         )
 
     # Call layer with all inputs and kwargs
@@ -152,7 +210,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         layer_outputs = self.base_layer.apply(hidden_states)
         print("layer_outputs.shape:", layer_outputs.shape)
         # project the mome attention output to the same size as the transformer attention output
-        mome_attention_output = self.mome_attention(hidden_states)
+        mome_attention_output = self.mome_attention.forward(hidden_states)
 
         # logger.debug(
         #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
@@ -167,15 +225,19 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         else:
             return layer_outputs + mome_attention_output
 
+    @classmethod
+    def can_replace_layer(cls, source_layer: nn.Module,
+                          mome_config: MoMEConfig, packed_modules_list: List,
+                          model_config: Optional[PretrainedConfig]) -> bool:
+        return type(source_layer) is ReplicatedLinear      
+
 
 class MoMEAttentionLayer(nn.Module):
     def __init__(
         self,
         hidden_size,
         r_value,
-        mome_embedding_seq_length,
         device,
-        embeddings,
         index: LaminiIndex,
         index_k,
     ):
@@ -183,30 +245,6 @@ class MoMEAttentionLayer(nn.Module):
         self.index = index
         self.index_k = index_k
         self.index_dimension = index.embedding_dimension
-
-        self.embeddings = embeddings
-
-        self.key_embedding = nn.Parameter(
-            torch.zeros(
-                1,
-                mome_embedding_seq_length * self.index_k,
-                self.index_dimension,
-            )
-        )
-
-        self.value_embedding = nn.Parameter(
-            torch.zeros(
-                1,
-                mome_embedding_seq_length * self.index_k,
-                self.index_dimension,
-            )
-        )
-
-        self.embedding_index = len(embeddings["key_embeddings"])
-
-        self.embeddings["key_embeddings"].append(self.key_embedding)
-        self.embeddings["value_embeddings"].append(self.value_embedding)
-        self.embeddings["embedding_indices"].append([])
 
         # A linear layer to project the query into the space of the index
         # device = "cuda"
@@ -229,10 +267,10 @@ class MoMEAttentionLayer(nn.Module):
 
     # Call layer with all inputs and kwargs
     def forward(
-        self, input_: torch.Tensor
+        self, hidden_states: torch.Tensor,
     ):
         # print("hidden_states.shape:", hidden_states.shape)
-        query = self.project_query(input_)
+        query = self.project_query(hidden_states)
         # print("query.shape:", query.shape)
         key, value = self.get_key_and_value(query)
 
@@ -241,7 +279,7 @@ class MoMEAttentionLayer(nn.Module):
         # logger.debug(f"value shape: {value.shape}, type: {value.dtype}")
 
         # convert key to the dtype of the query
-        target_dtype = input_.dtype
+        target_dtype = hidden_states.dtype
         query = query.to(target_dtype)
         key = key.to(target_dtype)
         value = value.to(target_dtype)
@@ -256,9 +294,7 @@ class MoMEAttentionLayer(nn.Module):
             is_causal=True,
             scale=None,
         )
-
         projected_mome_attention_output = self.project_value(mome_attention_output)
-
         return projected_mome_attention_output
 
     def project_value(self, value):
@@ -277,27 +313,7 @@ class MoMEAttentionLayer(nn.Module):
     def get_key_and_value(self, query):
         key, value, indices = self.get_key_and_value_from_index(query)
         self.embeddings["embedding_indices"][self.embedding_index] = indices
-
-        # Get the sequence length
-        batch_size = key.shape[0]
-        k_times_sequence_length = key.shape[1]
-
-        # If we are in training mode, then we need to copy the key and value
-        # to the parameter buffer so that back propogation works
-        if self.training:
-            with torch.no_grad():
-                self.key_embedding[:batch_size, :k_times_sequence_length, :].copy_(key)
-                self.value_embedding[:batch_size, :k_times_sequence_length, :].copy_(
-                    value
-                )
-                del key
-                del value
-            return (
-                self.key_embedding[:batch_size, :k_times_sequence_length, :],
-                self.value_embedding[:batch_size, :k_times_sequence_length, :],
-            )
-        else:
-            return key, value
+        return key, value
 
     def get_key_and_value_from_index(self, query):
         print("query size: ", query.shape)
