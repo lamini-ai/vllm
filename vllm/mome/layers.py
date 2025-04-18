@@ -18,12 +18,15 @@ from vllm.distributed import (get_tensor_model_parallel_rank,
                               tensor_model_parallel_gather)
 from vllm.distributed.utils import divide
 # yapf: disable
+from vllm.model_executor.models.llama import LlamaMLP, LlamaAttention
 from vllm.model_executor.layers.linear import (ColumnParallelLinear,
                                                LinearBase,
                                                MergedColumnParallelLinear,
                                                QKVParallelLinear,
                                                ReplicatedLinear,
                                                RowParallelLinear)
+
+
 # yapf: enable
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.rotary_embedding import (
@@ -258,7 +261,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     def can_replace_layer(cls, source_layer: nn.Module,
                           mome_config: MoMEConfig, packed_modules_list: List,
                           model_config: Optional[PretrainedConfig]) -> bool:
-        return type(source_layer) is ReplicatedLinear      
+        return type(source_layer) is LlamaMLP      
 
 
 class MoMEAttentionLayer(nn.Module):
@@ -402,50 +405,83 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         super().__init__()
         self.base_layer = base_layer
         self.input_size = self.base_layer.input_size
+        self.output_size = self.base_layer.output_size
         self.device = _get_mome_device(self.base_layer)
-        # self.output_size = self.base_layer.output_size
-        # Get the hidden size
-        hidden_size = get_hidden_size(base_layer)
-        # hidden_size = self.input_size
-        # Add a mome attention layer
-        self.mlp_mome_in = nn.Linear(hidden_size, r_value, bias=False)
-        self.mlp_mome_out = nn.Linear(r_value, hidden_size, bias=False)
 
-        self._reset_parameters()
+        # mapping tensors
+        self.indices_gpu: torch.Tensor
+        self.embedding_indices_gpu: torch.Tensor
+        self.sampler_indices_gpu: torch.Tensor
+        self.indices_len: List[int] = []
+
+        self.mlp_mome_in = None
+        self.mlp_mome_out = None
 
     def _reset_parameters(self):
         self.mlp_mome_out.weight.data.zero_()
 
+    def create_mome_weights(
+        self,
+        max_loras: int,
+        mome_config: MoMEConfig,
+        model_config: Optional[PretrainedConfig] = None,
+    ) -> None:
+        self.mome_config = mome_config
 
-    # Call layer with all inputs and kwargs
-    def forward(
-        self, input_: torch.Tensor
-    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
-        """Forward of ReplicatedLinearWithLoRA
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.output_size
+        # self.lora_a_tensors = torch.zeros(
+        #     (                
+        #         max_loras,
+        #         lora_a_out_size,
+        #         self.input_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
+        # self.lora_b_tensors = torch.zeros(
+        #     (
+        #         max_loras,
+        #         lora_b_out_size,
+        #         lora_a_out_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
 
-        Args:
-            input_: Tensor whose last dimension is `input_size`.
+        self.mlp_mome_in = nn.Linear(lora_b_out_size, lora_a_out_size, bias=False)
+        self.mlp_mome_out = nn.Linear(lora_a_out_size, lora_b_out_size, bias=False)
+        self._reset_parameters()
 
-        Returns:
-            - output
-            - bias
-        """
-        bias = (self.base_layer.bias
-                if not self.base_layer.skip_bias_add else None)
+    def reset_mome(self, index: int):
+        self.lora_a_tensors[index] = 0
+        self.lora_b_tensors[index] = 0
 
-        # Matrix multiply.
-        output = self.apply(input_, bias)
+    def set_mome(
+        self,
+        index: int,
+        lora_a: torch.Tensor,
+        lora_b: torch.Tensor,
+        rank: int,
+        mome_index: LaminiIndex,
+        mome_index_k: int,
+    ):
+        # Except for QKVParallelLinearWithLora and
+        # MergedColumnParallelLinearWithLoRA, all other linear LoRA layers
+        # store weights in a tuple of size 1. These two layers will
+        # override this function.
+        pass
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        self.reset_mome(index)
+        self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
+                                   lora_a.T, non_blocking=True)
+        self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
+                                   lora_b.T, non_blocking=True)
 
-        output_bias = (self.base_layer.bias
-                       if self.base_layer.skip_bias_add else None)
-        return output, output_bias
-
-    def apply(self,
-              x: torch.Tensor,
-              bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        output = self.base_layer.quant_method.apply(self.base_layer, x, bias)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        output = self.base_layer(hidden_states)
         mome_in_results = self.mlp_mome_in(output)
-        mome_results = self.mlp_mome_out(mome_in_results)
+        mome_out_results = self.mlp_mome_out(mome_in_results)
         # logger.debug(
         #     f"mome_results: {mome_results} {torch.histogram(mome_results, bins=4)}"
         # )
@@ -453,8 +489,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #     f"base_model_results: {base_model_results} {torch.histogram(base_model_results, bins=4)}"
         # )
         # sum the two outputs
-        layer_and_adaptor_sum = output + mome_results
-        return layer_and_adaptor_sum
+        return output + mome_out_results
 
     @classmethod
     def can_replace_layer(

@@ -371,22 +371,32 @@ class MoMEModelManager(AdapterModelManager):
                 new_module = replace_submodule(
                     self.model, 
                     module_name, 
-                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
+                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst,
+                               self.model.config)
                 )
             # 2. Extra LoRA for head
             elif "lm_head" in module_name:
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
+                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, 
+                                                packed_moduled_lst, self.model.config)
                 )
             # 3. Standard MoME adapter
-            else:
+            elif "self_attn" in module_name:
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst, self.model.config)
+                    from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst,
+                            self.model.config)
                 )
+            else:
+                logger.warning(
+                    "This model can't supports."
+                    "Only can adding MoMR to self_attn, mlp and lm_head, %s will be ignored.",
+                    module_name,
+                )
+                continue
             self.register_module(module_name, new_module)
             # TODO All mome layers share the same punica_wrapper based on reference.
             new_module.set_mapping(self.base_indices,
