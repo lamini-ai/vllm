@@ -48,22 +48,6 @@ def from_layer(layer: nn.Module,
             return ret
     return layer
 
-
-def from_layer_logits_processor(
-    layer: LogitsProcessor,
-    lm_head: ParallelLMHead,
-    max_momes: int,
-    mome_config: MoMEConfig,
-    model_config: Optional[PretrainedConfig] = None,
-) -> LoraHeadAdaptor:
-    # TODO: update LoraHeadAdaptor init to work here
-    ret = LoraHeadAdaptor(layer, lm_head.embedding_dim,
-                                  lm_head.weight.dtype, lm_head.weight.device,
-                                  lm_head.get_sharded_to_full_mapping())
-    ret.create_mome_weights(max_momes, mome_config, model_config)
-    return ret
-
-
 def replace_submodule(model: nn.Module, module_name: str,
                       new_module: nn.Module) -> nn.Module:
     """Replace a submodule in a model with a new module."""

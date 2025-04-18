@@ -22,7 +22,7 @@ from vllm.logger import init_logger
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.model_definition.lamini_index import LaminiIndex
 from vllm.mome.layers import (BaseLayerWithMoME, MoMEMapping)
-from vllm.mome.utils import (from_layer, from_layer_logits_processor, replace_submodule, parse_fine_tuned_mome_name)
+from vllm.mome.utils import (from_layer, replace_submodule, parse_fine_tuned_mome_name)
 
 from vllm.model_executor.models.module_mapping import MultiModelKeys
 from vllm.model_executor.models.utils import PPMissingLayer, WeightsMapper
@@ -379,7 +379,7 @@ class MoMEModelManager(AdapterModelManager):
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer_logits_processor(module, self.mome_slots, self.mome_config, 
+                    from_layer(module, self.mome_slots, self.mome_config, 
                                                 packed_moduled_lst, self.model.config)
                 )
             # 3. Standard MoME adapter
