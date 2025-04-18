@@ -18,7 +18,7 @@ from vllm.distributed import (get_tensor_model_parallel_rank,
                               tensor_model_parallel_gather)
 from vllm.distributed.utils import divide
 # yapf: disable
-from vllm.model_executor.models.llama import LlamaMLP, LlamaAttention
+from vllm.model_executor.models.llama import LlamaMLP, LlamaAttention, ParallelLMHead
 from vllm.model_executor.layers.linear import (ColumnParallelLinear,
                                                LinearBase,
                                                MergedColumnParallelLinear,
@@ -261,7 +261,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     def can_replace_layer(cls, source_layer: nn.Module,
                           mome_config: MoMEConfig, packed_modules_list: List,
                           model_config: Optional[PretrainedConfig]) -> bool:
-        return type(source_layer) is LlamaMLP      
+        return type(source_layer) is LlamaAttention      
 
 
 class MoMEAttentionLayer(nn.Module):
@@ -401,11 +401,10 @@ class MoMEAttentionLayer(nn.Module):
 
 
 class LoraMLPAdaptor(BaseLayerWithMoME):
-    def __init__(self, base_layer: LinearBase, r_value: int):
+    def __init__(self, base_layer: LlamaMLP):
         super().__init__()
         self.base_layer = base_layer
-        self.input_size = self.base_layer.input_size
-        self.output_size = self.base_layer.output_size
+        self.hidden_size = self.base_layer.down_proj.output_size
         self.device = _get_mome_device(self.base_layer)
 
         # mapping tensors
@@ -429,7 +428,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.mome_config = mome_config
 
         lora_a_out_size = mome_config.max_mome_rank
-        lora_b_out_size = self.output_size
+        lora_b_out_size = self.hidden_size
         # self.lora_a_tensors = torch.zeros(
         #     (                
         #         max_loras,
@@ -499,7 +498,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         packed_modules_list: List,
         model_config: Optional[PretrainedConfig],
     ) -> bool:
-        return type(source_layer) is ReplicatedLinear
+        return type(source_layer) is LlamaMLP
 
 
 class LoraHeadAdaptor(BaseLayerWithMoME):
@@ -552,9 +551,12 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         lora_results = self.mlp_lora_out(lora_in_results)
         return output + lora_results
 
-    # @property
-    # def weight(self):
-    #     return self.layer.weight
-    # @property
-    # def bias(self):
-    #     return self.layer.bias
+    @classmethod
+    def can_replace_layer(
+        cls,
+        source_layer: nn.Module,
+        mome_config: MoMEConfig,
+        packed_modules_list: List,
+        model_config: Optional[PretrainedConfig],
+    ) -> bool:
+        return type(source_layer) is ParallelLMHead

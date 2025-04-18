@@ -65,39 +65,26 @@ def cleanup_fixture(should_do_global_cleanup_after_test: bool):
     if should_do_global_cleanup_after_test:
         cleanup_dist_env_and_memory(shutdown_ray=True)
 
-
 @pytest.fixture
 def dummy_model() -> nn.Module:
     model = nn.Sequential(
         OrderedDict([
             ("embed_tokens", nn.Embedding(128256, 4096)),
 
-            (
-                "layer0", nn.Sequential(
-                    OrderedDict([
-                        ("input_layernorm", nn.LayerNorm(4096)),
-                        ("self_attn", nn.Identity()),
-                        ("post_attention_layernorm", nn.LayerNorm(4096)),
-                        ("mlp", LlamaMLP(
-                            hidden_size=4096,
-                            intermediate_size=14336,
-                            hidden_act="silu"
-                        )),
-                    ])
-                ),
-                "layer1", nn.Sequential(
-                    OrderedDict([
-                        ("input_layernorm", nn.LayerNorm(4096)),
-                        ("self_attn", nn.Identity()),
-                        ("post_attention_layernorm", nn.LayerNorm(4096)),
-                        ("mlp", LlamaMLP(
-                            hidden_size=4096,
-                            intermediate_size=14336,
-                            hidden_act="silu"
-                        )),
-                    ])
-                ),
-            ),
+            ("layer0", nn.Sequential(OrderedDict([
+                ("input_layernorm", nn.LayerNorm(4096)),
+                ("self_attn", nn.Identity()),
+                ("post_attention_layernorm", nn.LayerNorm(4096)),
+                ("mlp", LlamaMLP(hidden_size=4096, intermediate_size=14336, hidden_act="silu")),
+            ]))),
+
+            ("layer1", nn.Sequential(OrderedDict([
+                ("input_layernorm", nn.LayerNorm(4096)),
+                ("self_attn", nn.Identity()),
+                ("post_attention_layernorm", nn.LayerNorm(4096)),
+                ("mlp", LlamaMLP(hidden_size=4096, intermediate_size=14336, hidden_act="silu")),
+            ]))),
+
             ("norm", nn.LayerNorm(4096)),
             ("lm_head", ParallelLMHead(4096, 128256)),
             ("logits_processor", LogitsProcessor(128256)),

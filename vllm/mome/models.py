@@ -411,7 +411,7 @@ class MoMEModelManager(AdapterModelManager):
                 module_name) or target_module == module_name
             for target_module in self.supported_mome_modules)
 
-    def register_module(self, module_name: str, module: "BaseLayerWithMoME"):
+    def register_module(self, module_name: str, module: BaseLayerWithMoME):
         assert isinstance(module, BaseLayerWithMoME)
         self.modules[module_name] = module
 

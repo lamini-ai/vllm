@@ -47,7 +47,7 @@ def create_mome(mome_id: int, model: nn.Module, sub_modules: List[str],
 
 def test_replace_submodules(dist_init, dummy_model):
     model = dummy_model
-    model.supported_lora_modules = ["layer0.mlp",]
+    model.supported_mome_modules = ["layer0.mlp",]
     model.packed_modules_mapping = {}
     manager = MoMEModelManager(
         model, 1, 1,
