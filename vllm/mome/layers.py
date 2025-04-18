@@ -44,25 +44,9 @@ logger = init_logger(__name__)
 
 
 def _get_mome_device(base_layer: nn.Module) -> torch.device:
-    # code borrowed from https://github.com/fmmoret/vllm/blob/fm-support-mome-on-quantized-models/vllm/mome/layers.py#L34
-    """Returns the device for where to place the MoME tensors."""
-    # unquantizedLinear
-    if hasattr(base_layer, "weight"):
-        return base_layer.weight.device
-    # Compressed Tensor
-    elif hasattr(base_layer, "weight_packed"):
-        return base_layer.weight_packed.device
-    # GPTQ/AWQ
-    elif hasattr(base_layer, "qweight"):
-        return base_layer.qweight.device
-    # marlin
-    elif hasattr(base_layer, "B"):
-        return base_layer.B.device
-    # HQQ marlin
-    elif hasattr(base_layer, "W_q"):
-        return base_layer.W_q.device
-    else:
-        raise ValueError(f"Unsupported base layer: {base_layer}")
+    for param in base_layer.parameters():
+        return param.device
+    raise ValueError(f"Unsupported get device from base layer: {base_layer}")
 
 def get_hidden_size(layer):
     logger.debug(f"getting hidden size for layer: {layer}")
