@@ -492,7 +492,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
 
 class LoraHeadAdaptor(BaseLayerWithMoME):
     # TODO: update LoraHeadAdaptor init to work with from_layer_logits_processor
-    def __init__(self, base_layer: LinearBase, r_value: int):
+    def __init__(self, base_layer: LinearBase):
         super().__init__()
         self.base_layer = base_layer
         self.hidden_size = self.base_layer.weight.shape
