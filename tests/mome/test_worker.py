@@ -63,14 +63,14 @@ def test_worker_apply_mome(mome_adapter_files):
         for mome_request in mome_requests
     }
 
-    # for i in range(32):
-    #     random.seed(i)
-    #     iter_mome_requests = random.choices(mome_requests,
-    #                                         k=random.randint(1, n_momes))
-    #     random.shuffle(iter_mome_requests)
-    #     iter_mome_requests = iter_mome_requests[:-random.randint(0, n_momes)]
-    #     worker.model_runner.set_active_momes(iter_mome_requests,
-    #                                          MoMEMapping([], []))
-    #     assert worker.list_momes().issuperset(
-    #         {mome_request.mome_int_id
-    #          for mome_request in iter_mome_requests})
+    for i in range(32):
+        random.seed(i)
+        iter_mome_requests = random.choices(mome_requests,
+                                            k=random.randint(1, n_momes))
+        random.shuffle(iter_mome_requests)
+        iter_mome_requests = iter_mome_requests[:-random.randint(0, n_momes)]
+        worker.model_runner.set_active_momes(iter_mome_requests,
+                                             MoMEMapping([], []))
+        assert worker.list_momes().issuperset(
+            {mome_request.mome_int_id
+             for mome_request in iter_mome_requests})
