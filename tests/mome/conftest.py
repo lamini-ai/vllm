@@ -65,6 +65,11 @@ def cleanup_fixture(should_do_global_cleanup_after_test: bool):
     if should_do_global_cleanup_after_test:
         cleanup_dist_env_and_memory(shutdown_ray=True)
 
+
+@pytest.fixture(scope="session")
+def mome_adapter_files():
+    return "/root/34916/checkpoints/checkpoint-60"
+
 @pytest.fixture
 def dummy_model() -> nn.Module:
     model = nn.Sequential(
