@@ -473,7 +473,7 @@ class Worker(LocalOrDistributedWorkerBase):
         return self.model_runner.pin_mome(mome_id)
 
     def list_momes(self) -> Set[int]:
-        return self.model_runner.list_loras()
+        return self.model_runner.list_momes()
     
     def add_prompt_adapter(
             self, prompt_adapter_request: PromptAdapterRequest) -> bool:
