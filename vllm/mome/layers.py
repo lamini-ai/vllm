@@ -405,11 +405,11 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mlp_mome_in = None
-        self.mlp_mome_out = None
+        self.mlp_lora_in = None
+        self.mlp_lora_out = None
 
     def _reset_parameters(self, index):
-        self.mlp_mome_out[index].weight.data.zero_()
+        self.mlp_lora_out[index].weight.data.zero_()
 
     def create_mome_weights(
         self,
@@ -440,12 +440,14 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #     device=self.device,
         # )
 
-        self.mlp_mome_in = []
-        self.mlp_mome_out = []
+        self.mlp_lora_in = []
+        self.mlp_lora_out = []
 
     def reset_mome(self, index: int):
-        self.lora_a_tensors[index] = 0
-        self.lora_b_tensors[index] = 0
+        # self.lora_a_tensors[index] = 0
+        # self.lora_b_tensors[index] = 0
+        self.mlp_lora_in[index] = None
+        self.mlp_lora_out[index] = None
 
     def set_mome(
         self,
@@ -462,14 +464,14 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #                            lora_a.T, non_blocking=True)
         # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
         #                            lora_b.T, non_blocking=True)
-        self.mlp_mome_in[index] = nn.Linear(self.hidden_size, rank, bias=False)
-        self.mlp_mome_out[index] = nn.Linear(rank, self.hidden_size, bias=False)
+        self.mlp_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False)
+        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False)
         self._reset_parameters(index)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
-        mome_in_results = self.mlp_mome_in[0](output)
-        mome_out_results = self.mlp_mome_out[0](mome_in_results)
+        mome_in_results = self.mlp_lora_in[0](output)
+        mome_out_results = self.mlp_lora_out[0](mome_in_results)
         # logger.debug(
         #     f"mome_results: {mome_results} {torch.histogram(mome_results, bins=4)}"
         # )
@@ -506,15 +508,15 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mlp_mome_in = []
-        self.mlp_mome_out = []
+        self.head_lora_in = []
+        self.head_lora_out = []
 
     def _reset_parameters(self, index):
-        self.mlp_mome_out[index].weight.data.zero_()
+        self.head_lora_out[index].weight.data.zero_()
     
     def reset_mome(self, index: int):
-        self.mlp_lora_in[index] = None
-        self.mlp_lora_out[index] = None
+        self.head_lora_in[index] = None
+        self.head_lora_out[index] = None
 
     def set_mome(
         self,
@@ -526,15 +528,15 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         mome_index_k: int,
     ):
         self.reset_mome(index)
-        self.mlp_lora_in[index] = nn.Linear(self.hidden_size[1], rank, bias=False)
-        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size[0], bias=False)
+        self.head_lora_in[index] = nn.Linear(self.hidden_size[1], rank, bias=False)
+        self.head_lora_out[index] = nn.Linear(rank, self.hidden_size[0], bias=False)
         self._reset_parameters(index)
 
     # Call layer with all inputs and kwargs
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer.quant_method.apply(hidden_states)
-        mome_in_results = self.mlp_mome_in[0](output)
-        mome_out_results = self.mlp_mome_out[0](mome_in_results)
+        mome_in_results = self.head_lora_in[0](output)
+        mome_out_results = self.head_lora_out[0](mome_in_results)
         return output + mome_out_results
 
     @classmethod
