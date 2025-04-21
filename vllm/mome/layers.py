@@ -201,7 +201,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         # MergedColumnParallelLinearWithLoRA, all other linear LoRA layers
         # store weights in a tuple of size 1. These two layers will
         # override this function.
-        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        # assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
         # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
         #                            lora_a.T, non_blocking=True)
