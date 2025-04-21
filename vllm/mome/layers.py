@@ -161,8 +161,8 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        lora_a_out_size = mome_config.max_mome_rank
-        lora_b_out_size = self.output_size
+        # lora_a_out_size = mome_config.max_mome_rank
+        # lora_b_out_size = self.output_size
         # self.lora_a_tensors = torch.zeros(
         #     (                
         #         max_loras,
@@ -181,7 +181,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         #     dtype=mome_config.mome_dtype,
         #     device=self.device,
         # )
-        self.mome_attention_list = []
+        self.mome_attention_list = [None for _ in range(max_loras)]
 
     def reset_mome(self, index: int):
         # self.lora_a_tensors[index] = 0
@@ -440,8 +440,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #     device=self.device,
         # )
 
-        self.mlp_lora_in = []
-        self.mlp_lora_out = []
+        self.mlp_lora_in = [None for _ in range(max_loras)]
+        self.mlp_lora_out = [None for _ in range(max_loras)]
 
     def reset_mome(self, index: int):
         # self.lora_a_tensors[index] = 0
@@ -510,6 +510,16 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
 
         self.head_lora_in = []
         self.head_lora_out = []
+
+    def create_mome_weights(
+        self,
+        max_loras: int,
+        mome_config: MoMEConfig,
+        model_config: Optional[PretrainedConfig] = None,
+    ) -> None:
+        self.mome_config = mome_config
+        self.head_lora_in = [None for _ in range(max_loras)]
+        self.head_lora_out = [None for _ in range(max_loras)]
 
     def _reset_parameters(self, index):
         self.head_lora_out[index].weight.data.zero_()
