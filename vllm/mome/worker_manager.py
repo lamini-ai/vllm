@@ -84,7 +84,7 @@ class WorkerMoMEManager(AbstractWorkerManager):
                 mome_path,
                 supported_mome_modules,
                 mome_model_id=mome_request.mome_int_id,
-                dtype=self.mome_config.dtype,
+                dtype=self.mome_config.mome_dtype,
                 device="cpu"
                 )
 
