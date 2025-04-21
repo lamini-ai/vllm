@@ -13,8 +13,8 @@ from vllm.mome.layers import (LoraMLPAdaptor, BaseMoMEAttentionLayer)
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.models import (MoMEMapping, MoMEModel, MoMEModelManager)
 from vllm.mome.request import MoMERequest
-from vllm.lora.worker_manager import (LRUCacheWorkerLoRAManager,
-                                      WorkerLoRAManager)
+from vllm.lora.worker_manager import (LRUCacheWorkerMoMEManager,
+                                      WorkerMoMEManager)
 from vllm.model_executor.models.llama import LlamaMLP
 from vllm.platforms import current_platform
 
@@ -76,7 +76,7 @@ def test_mome_model_manager(dist_init, dummy_model, device):
     model_lora3 = create_lora(3,
                               model, ["dense1", "dense2", "lm_head"],
                               device=device)
-    manager = LoRAModelManager(model,
+    manager = MoMEModelManager(model,
                                2,
                                2,
                                2,

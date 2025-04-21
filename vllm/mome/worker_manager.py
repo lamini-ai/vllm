@@ -13,7 +13,7 @@ from vllm.adapter_commons.worker_manager import AbstractWorkerManager
 from vllm.config import MoMEConfig
 from vllm.logger import init_logger
 from vllm.mome.models import (MoMEModel, MoMEModelManager,
-                              create_mome_manager)
+                              LRUCacheMoMEModelManager, create_mome_manager)
 from vllm.mome.request import MoMERequest
 from vllm.lora.utils import get_adapter_absolute_path
 
@@ -142,3 +142,64 @@ class WorkerMoMEManager(AbstractWorkerManager):
     def list_adapters(self) -> Set[int]:
         return list_adapters_worker(self._adapter_manager.list_adapters)
 
+
+class LRUCacheWorkerMoMEManager(WorkerMoMEManager):
+    """WorkerM o MEManager that manages MoME models on the worker side.
+
+    Uses an LRU Cache. Every request, the requested MoMEs will be loaded
+    (unless they are already loaded) and least recently used MoMEs will
+    be unloaded if the cache is above capacity."""
+
+    _manager_cls: Type[LRUCacheMoMEModelManager] = LRUCacheMoMEModelManager
+
+    def create_mome_manager(
+        self,
+        model: torch.nn.Module,
+    ) -> Any:
+        mome_manager = create_mome_manager(
+            model,
+            mome_manager_cls=self._manager_cls,
+            max_num_seqs=self.max_num_seqs,
+            max_num_batched_tokens=self.max_num_batched_tokens,
+            mome_config=self.mome_config,
+            device=self.device,
+        )
+        self._adapter_manager = mome_manager
+        return mome_manager.model
+
+    def _apply_adapters(self, mome_requests: Set[MoMERequest]) -> None:
+        momes_map = {
+            mome_request.mome_int_id: mome_request
+            for mome_request in mome_requests if mome_request
+        }
+        if len(momes_map) > self._adapter_manager.mome_slots:
+            raise RuntimeError(
+                f"Number of requested MoMEs ({len(momes_map)}) is greater "
+                "than the number of GPU MoME slots "
+                f"({self._adapter_manager.mome_slots}).")
+        for mome in momes_map.values():
+            self.add_adapter(mome)
+
+    def add_adapter(self, mome_request: MoMERequest) -> bool:
+        if mome_request.mome_int_id not in self.list_adapters():
+            # Load the new adapter first to ensure it is actually valid, before
+            # evicting any existing adapters.
+            # This may cause the # of loaded mome adapters to very temporarily
+            # exceed `--max-cpu-momes`.
+            mome = self._load_adapter(mome_request)
+
+            # Loading succeeded, now check if we will exceed cache capacity and
+            # evict if the oldest adapter if so
+            if len(self._adapter_manager) + 1 > self._adapter_manager.capacity:
+                assert isinstance(self._adapter_manager,
+                                  LRUCacheMoMEModelManager)
+                self._adapter_manager.remove_oldest_adapter()
+            # Then add the new adapter to the cache
+            loaded = self._adapter_manager.add_adapter(mome)
+        else:
+            # If the mome is already loaded, just touch it to
+            # update its position in the caches
+            loaded = self._adapter_manager.get_adapter(
+                mome_request.mome_int_id) is not None
+        self._adapter_manager.activate_adapter(mome_request.mome_int_id)
+        return loaded

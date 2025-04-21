@@ -2,7 +2,7 @@ import copy
 import os
 import re
 import json
-from typing import Any, Dict, List, Literal, Optional, Set, Type, Union, Tuple
+from typing import Any, Dict, List, Callable, Optional, Set, Type, Union, Tuple
 
 import safetensors.torch
 import torch
@@ -11,7 +11,8 @@ from torch import nn
 from typing import Any, Dict, Optional
 from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
 
-from vllm.adapter_commons.models import AdapterModel, AdapterModelManager
+from vllm.adapter_commons.models import (AdapterLRUCache, AdapterModel,
+                                         AdapterModelManager)
 from vllm.adapter_commons.utils import (add_adapter, deactivate_adapter,
                                         get_adapter, list_adapters,
                                         remove_adapter, set_adapter_mapping)
@@ -443,6 +444,84 @@ class MoMEModelManager(AdapterModelManager):
         """Pin a MoMEModel in the manager cache."""
         raise NotImplementedError(
             "Pinning is not supported in MoMEModelManager.")
+
+
+class MoMELRUCache(AdapterLRUCache[MoMEModel]):
+
+    def __init__(self, capacity: int, deactivate_mome_fn: Callable[[int],
+                                                                   bool]):
+        super().__init__(capacity, deactivate_mome_fn)
+
+
+class LRUCacheMoMEModelManager(MoMEModelManager):
+    """A model manager that manages multiple MoMEs with LRU cache."""
+
+    def __init__(self, model: nn.Module, max_num_seqs: int,
+                 max_num_batched_tokens: int, mome_config: MoMEConfig,
+                 device: torch.device):
+        super().__init__(model, max_num_seqs, max_num_batched_tokens,
+                        mome_config, device)
+        self._registered_adapters: MoMELRUCache = MoMELRUCache(
+            self.capacity, self.deactivate_adapter)
+        self._active_adapters: MoMELRUCache = MoMELRUCache(
+            self.mome_slots, self._deactivate_adapter)
+
+    def list_adapters(self) -> Dict[int, MoMEModel]:
+        """List all registered MoMEModels."""
+        return dict(self._registered_adapters.cache)
+
+    def add_adapter(self, mome: MoMEModel) -> bool:
+        """Add a MoMEModel to the manager."""
+        logger.debug(
+            "Adding mome. Model id: %d, "
+            "int id: %d, "
+            "scaling factor: %s", mome.id, mome.id, mome.scaling_factor)
+        if mome.id not in self._registered_adapters:
+            self._add_adapter(mome)
+            was_added = True
+        else:
+            # We always touch to update the LRU cache order
+            self._registered_adapters.touch(mome.id)
+            was_added = False
+        return was_added
+
+    def activate_adapter(
+        self,
+        mome_id: int,
+    ) -> bool:
+        if mome_id not in self._active_adapters and len(
+                self._active_adapters) >= self.mome_slots:
+            self._active_adapters.remove_oldest()
+        result = super().activate_adapter(mome_id)
+        # We always touch to update the LRU cache order
+        self._active_adapters.touch(mome_id)
+        return result
+
+    def remove_oldest_adapter(self) -> bool:
+        if len(self._registered_adapters) > 0:
+            self._registered_adapters.remove_oldest()
+            return True
+        return False
+
+    def pin_adapter(self, mome_id: int) -> bool:
+        """Pin a MoMEModel in the manager cache."""
+        self._pin_mome_in_cpu_cache(mome_id)
+        self._pin_mome_in_gpu_cache(mome_id)
+        return True
+
+    def _pin_mome_in_cpu_cache(self, mome_id: int):
+        try:
+            self._registered_adapters.pin(mome_id)
+        except ValueError as err:
+            raise ValueError("Pinning failed. "
+                             f"MoME {mome_id} is not registered.") from err
+
+    def _pin_mome_in_gpu_cache(self, mome_id: int):
+        if mome_id not in self._active_adapters:
+            # move mome to gpu if not already active
+            self.activate_adapter(mome_id)
+
+        self._active_adapters.pin(mome_id)
 
 
 def create_mome_manager(
