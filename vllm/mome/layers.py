@@ -506,8 +506,8 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mlp_mome_in = None
-        self.mlp_mome_out = None
+        self.mlp_mome_in = []
+        self.mlp_mome_out = []
 
     def _reset_parameters(self, index):
         self.mlp_mome_out[index].weight.data.zero_()
@@ -526,9 +526,9 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         mome_index_k: int,
     ):
         self.reset_mome(index)
-        self.mlp_lora_in = nn.Linear(self.hidden_size[1], rank, bias=False)
-        self.mlp_lora_out = nn.Linear(rank, self.hidden_size[0], bias=False)
-        self._reset_parameters(index))
+        self.mlp_lora_in[index] = nn.Linear(self.hidden_size[1], rank, bias=False)
+        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size[0], bias=False)
+        self._reset_parameters(index)
 
     # Call layer with all inputs and kwargs
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
