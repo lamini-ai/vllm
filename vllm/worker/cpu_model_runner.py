@@ -17,6 +17,9 @@ from vllm.logger import init_logger
 from vllm.lora.layers import LoRAMapping
 from vllm.lora.request import LoRARequest
 from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
+from vllm.mome.layers import MoMEMapping
+from vllm.mome.request import MoMERequest
+from vllm.mome.worker_manager import LRUCacheWorkerMoMEManager
 from vllm.model_executor import SamplingMetadata
 from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
 from vllm.model_executor.layers.sampler import SamplerOutput
@@ -57,6 +60,8 @@ class ModelInputForCPU(ModelRunnerInputBase):
     query_lens: Optional[List[int]] = None
     lora_mapping: Optional["LoRAMapping"] = None
     lora_requests: Optional[Set[LoRARequest]] = None
+    mome_mapping: Optional["MoMEMapping"] = None
+    mome_requests: Optional[Set[MoMERequest]] = None
 
     def as_broadcastable_tensor_dict(
             self) -> Dict[str, Union[int, torch.Tensor]]:
@@ -67,6 +72,8 @@ class ModelInputForCPU(ModelRunnerInputBase):
             "multi_modal_kwargs": self.multi_modal_kwargs,
             "lora_requests": self.lora_requests,
             "lora_mapping": self.lora_mapping,
+            "mome_requests": self.mome_requests,
+            "mome_mapping": self.mome_mapping,
         }
         _add_attn_metadata_broadcastable_dict(tensor_dict, self.attn_metadata)
 
@@ -156,6 +163,7 @@ class ModelInputForCPUBuilder(ModelRunnerInputBuilderBase[ModelInputForCPU]):
         self.device = self.runner.device
         self.multi_modal_input_mapper = self.runner.multi_modal_input_mapper
         self.enable_lora = self.runner.lora_config is not None
+        self.enable_mome = self.runner.mome_config is not None
         if self.runner.attn_backend is not None:
             # spec decode (e.g. Medusa) does not have atten backend
             attn_backend = self.runner.attn_backend
@@ -214,6 +222,17 @@ class ModelInputForCPUBuilder(ModelRunnerInputBuilderBase[ModelInputForCPU]):
 
             lora_mapping = self._prepare_lora_input(
                 self.seq_group_metadata_list, is_prompt)
+            
+        # MoME data.
+        mome_requests = set()
+        mome_mapping = None
+        if self.enable_mome:
+            mome_requests = set(seq.mome_request
+                                for seq in self.seq_group_metadata_list
+                                if seq.mome_request is not None)
+
+            mome_mapping = MoMEMapping.from_seq_group(
+                self.seq_group_metadata_list)
 
         return self.model_input_cls(input_tokens=input_tokens,
                                     input_positions=input_positions,
@@ -223,7 +242,10 @@ class ModelInputForCPUBuilder(ModelRunnerInputBuilderBase[ModelInputForCPU]):
                                     attn_metadata=attn_metadata,
                                     multi_modal_kwargs=multi_modal_kwargs,
                                     lora_mapping=lora_mapping,
-                                    lora_requests=lora_requests)
+                                    lora_requests=lora_requests,
+                                    mome_mapping=mome_mapping,
+                                    mome_requests=mome_requests
+                                    )
 
     def _build_input_data(self):
         for seq_group_metadata in self.seq_group_metadata_list:
@@ -428,6 +450,24 @@ class ModelInputForCPUBuilder(ModelRunnerInputBuilderBase[ModelInputForCPU]):
                            prompt_mapping=tuple(prompt_mapping),
                            is_prefill=is_prefill)
 
+    def _prepare_mome_input(
+            self, seq_group_metadata_list: List[SequenceGroupMetadata],
+            is_prefill: bool) -> MoMEMapping:
+        index_mapping = []
+        prompt_mapping = []
+        for seq in seq_group_metadata_list:
+            mome_id = seq.mome_int_id
+            query_len = seq.token_chunk_size
+
+            index_mapping += [mome_id] * query_len
+            prompt_mapping += [mome_id] * (
+                query_len if seq.sampling_params
+                and seq.sampling_params.prompt_logprobs is not None else 1)
+
+        return MoMEMapping(index_mapping=tuple(index_mapping),
+                           prompt_mapping=tuple(prompt_mapping),
+                           is_prefill=is_prefill)
+
 
 class CPUModelRunnerBase(ModelRunnerBase[TModelInputForCPU]):
     """
@@ -481,6 +521,7 @@ class CPUModelRunnerBase(ModelRunnerBase[TModelInputForCPU]):
         self.model: nn.Module  # Set after init_Model
         # Set after load_model.
         self.lora_manager: Optional[LRUCacheWorkerLoRAManager] = None
+        self.mome_manager: Optional[LRUCacheWorkerMoMEManager] = None
 
         if hasattr(self, "_builder_cls"):
             # multi-step model runner does not have `_builder_cls`
@@ -517,6 +558,22 @@ class CPUModelRunnerBase(ModelRunnerBase[TModelInputForCPU]):
                 max_position_embeddings=max_pos_embeddings,
             )
             self.model = self.lora_manager.create_lora_manager(self.model)
+        
+        if self.mome_config:
+            assert supports_multimodal(
+                self.model
+            ), f"{self.model.__class__.__name__} does not support MoME yet."
+
+            if not hasattr(self.model, "mome_manager"):
+                raise RuntimeError("MoME is not supported by this model.")
+
+            self.mome_manager = LRUCacheWorkerMoMEManager(
+                self.scheduler_config.max_num_seqs,
+                self.scheduler_config.max_num_batched_tokens,
+                self.mome_config,
+                self.device
+            )
+            self.model = self.mome_manager.create_mome_manager(self.model)
 
     def get_model(self) -> nn.Module:
         return self.model
@@ -576,6 +633,36 @@ class CPUModelRunnerBase(ModelRunnerBase[TModelInputForCPU]):
             raise RuntimeError("LoRA is not enabled.")
         return self.lora_manager.list_adapters()
 
+    def remove_all_momes(self):
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        self.mome_manager.remove_all_adapters()
+
+    def set_active_momes(self, mome_requests: Set[LoRARequest],
+                         mome_mapping: LoRAMapping) -> None:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        self.mome_manager.set_active_adapters(mome_requests, mome_mapping)
+
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.add_adapter(mome_request)
+
+    def remove_mome(self, mome_id: int) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.remove_adapter(mome_id)
+
+    def pin_mome(self, mome_id: int) -> bool:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.pin_adapter(mome_id)
+
+    def list_momes(self) -> Set[int]:
+        if not self.mome_manager:
+            raise RuntimeError("MoME is not enabled.")
+        return self.mome_manager.list_adapters()
 
 class CPUModelRunner(CPUModelRunnerBase[ModelInputForCPUWithSamplingMetadata]):
     _model_input_cls: Type[ModelInputForCPUWithSamplingMetadata] = (
@@ -637,6 +724,12 @@ class CPUModelRunner(CPUModelRunnerBase[ModelInputForCPUWithSamplingMetadata]):
             assert model_input.lora_mapping is not None
             self.set_active_loras(model_input.lora_requests,
                                   model_input.lora_mapping)
+
+        if self.mome_config:
+            assert model_input.mome_requests is not None
+            assert model_input.mome_mapping is not None
+            self.set_active_momes(model_input.mome_requests,
+                                  model_input.mome_mapping)
 
         model_executable = self.model
 

@@ -13,6 +13,7 @@ from vllm.distributed import (ensure_model_parallel_initialized,
                               init_distributed_environment)
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor import set_random_seed
 from vllm.sequence import ExecuteModelRequest
 from vllm.utils import STR_DTYPE_TO_TORCH_DTYPE, bind_kv_cache
@@ -278,6 +279,18 @@ class CPUWorker(LocalOrDistributedWorkerBase):
 
     def list_loras(self) -> Set[int]:
         return self.model_runner.list_loras()
+    
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        return self.model_runner.add_mome(mome_request)
+    
+    def remove_mome(self, mome_id: int) -> bool:
+        return self.model_runner.remove_mome(mome_id)
+    
+    def pin_mome(self, mome_id: int) -> bool:
+        return self.model_runner.pin_mome(mome_id)
+    
+    def list_momes(self) -> Set[int]:
+        return self.model_runner.list_momes()
 
     def _validate_num_cpu_blocks(self, num_cpu_blocks: int) -> None:
         """Raise errors if the num_cpu_blocks is invalid.
