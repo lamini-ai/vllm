@@ -153,25 +153,24 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
 
         lora_a_out_size = mome_config.max_mome_rank
         lora_b_out_size = self.output_size
-        self.lora_a_tensors = torch.zeros(
-            (                
-                max_loras,
-                lora_a_out_size,
-                self.input_size,
-            ),
-            dtype=mome_config.mome_dtype,
-            device=self.device,
-        )
-        self.lora_b_tensors = torch.zeros(
-            (
-                max_loras,
-                lora_b_out_size,
-                lora_a_out_size,
-            ),
-            dtype=mome_config.mome_dtype,
-            device=self.device,
-        )
-        
+        # self.lora_a_tensors = torch.zeros(
+        #     (                
+        #         max_loras,
+        #         lora_a_out_size,
+        #         self.input_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
+        # self.lora_b_tensors = torch.zeros(
+        #     (
+        #         max_loras,
+        #         lora_b_out_size,
+        #         lora_a_out_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
         self.mome_attention_list = []
 
     def reset_mome(self, index: int):
@@ -222,19 +221,18 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         # if past_key_value is not None:
         #    logger.debug(f"past_key_value dtype: {past_key_value}")
 
-        layer_outputs = self.base_layer.apply(hidden_states)
-        print("layer_outputs.shape:", layer_outputs.shape)
+        layer_outputs = self.base_layer(hidden_states)
+        logger.debug("layer_outputs.shape:", layer_outputs.shape)
         # project the mome attention output to the same size as the transformer attention output
-        mome_attention_output = self.mome_attention.forward(hidden_states)
-
+        mome_attention_output = self.mome_attention[0].forward(hidden_states)
+        logger.debug(f"mome_attention_output shape: {mome_attention_output.shape}")
         # logger.debug(
         #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
         # )
         # logger.debug(
         #     f"self_attention_output: {self_attention_output} {torch.histogram(self_attention_output, bins=4)}"
         # )
-
-        # print("type layer_outputs: ", type(layer_outputs))
+ 
         if isinstance(layer_outputs, tuple):
             return (layer_outputs[0] + mome_attention_output,) + layer_outputs[1:]
         else:
@@ -399,8 +397,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.mlp_mome_in = None
         self.mlp_mome_out = None
 
-    def _reset_parameters(self):
-        self.mlp_mome_out.weight.data.zero_()
+    def _reset_parameters(self, index):
+        self.mlp_mome_out[index].weight.data.zero_()
 
     def create_mome_weights(
         self,
@@ -431,9 +429,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #     device=self.device,
         # )
 
-        self.mlp_mome_in = nn.Linear(lora_b_out_size, lora_a_out_size, bias=False)
-        self.mlp_mome_out = nn.Linear(lora_a_out_size, lora_b_out_size, bias=False)
-        self._reset_parameters()
+        self.mlp_mome_in = []
+        self.mlp_mome_out = []
 
     def reset_mome(self, index: int):
         self.lora_a_tensors[index] = 0
@@ -448,22 +445,21 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         mome_index: LaminiIndex,
         mome_index_k: int,
     ):
-        # Except for QKVParallelLinearWithLora and
-        # MergedColumnParallelLinearWithLoRA, all other linear LoRA layers
-        # store weights in a tuple of size 1. These two layers will
-        # override this function.
-        pass
-        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        # assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
-        self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
-                                   lora_a.T, non_blocking=True)
-        self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
-                                   lora_b.T, non_blocking=True)
+        # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
+        #                            lora_a.T, non_blocking=True)
+        # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
+        #                            lora_b.T, non_blocking=True)
+        hidden_size = get_hidden_size(self.base_layer)
+        self.mlp_mome_in[index] = nn.Linear(hidden_size, rank, bias=False)
+        self.mlp_mome_out[index] = nn.Linear(rank, hidden_size, bias=False)
+        self._reset_parameters(index)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
-        mome_in_results = self.mlp_mome_in(output)
-        mome_out_results = self.mlp_mome_out(mome_in_results)
+        mome_in_results = self.mlp_mome_in[0](output)
+        mome_out_results = self.mlp_mome_out[0](mome_in_results)
         # logger.debug(
         #     f"mome_results: {mome_results} {torch.histogram(mome_results, bins=4)}"
         # )
@@ -489,50 +485,47 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
     def __init__(self, base_layer: LinearBase, r_value: int):
         super().__init__()
         self.base_layer = base_layer
-        self.input_size = self.base_layer.input_size
-        self.device = _get_mome_device(self.base_layer)
-        # self.output_size = self.base_layer.output_size
-        # Get the hidden size
-        hidden_size = self.base_layer.weight.shape
+        self.hidden_size = self.base_layer.weight.shape
         # Add a mome attention layer
-        self.mlp_lora_in = nn.Linear(hidden_size[1], r_value, bias=False)
-        self.mlp_lora_out = nn.Linear(r_value, hidden_size[0], bias=False)
 
-        self._reset_parameters()
+        self.device = _get_mome_device(self.base_layer)
 
-    def _reset_parameters(self):
-        self.mlp_mome_out.weight.data.zero_()
+        # mapping tensors
+        self.indices_gpu: torch.Tensor
+        self.embedding_indices_gpu: torch.Tensor
+        self.sampler_indices_gpu: torch.Tensor
+        self.indices_len: List[int] = []
+
+        self.mlp_mome_in = None
+        self.mlp_mome_out = None
+
+    def _reset_parameters(self, index):
+        self.mlp_mome_out[index].weight.data.zero_()
+    
+    def reset_mome(self, index: int):
+        self.mlp_lora_in[index] = None
+        self.mlp_lora_out[index] = None
+
+    def set_mome(
+        self,
+        index: int,
+        lora_a: torch.Tensor,
+        lora_b: torch.Tensor,
+        rank: int,
+        mome_index: LaminiIndex,
+        mome_index_k: int,
+    ):
+        self.reset_mome(index)
+        self.mlp_lora_in = nn.Linear(self.hidden_size[1], rank, bias=False)
+        self.mlp_lora_out = nn.Linear(rank, self.hidden_size[0], bias=False)
+        self._reset_parameters(index))
 
     # Call layer with all inputs and kwargs
-    def forward(
-        self, input_: torch.Tensor
-    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
-        """Forward of ReplicatedLinearWithLoRA
-
-        Args:
-            input_: Tensor whose last dimension is `input_size`.
-
-        Returns:
-            - output
-            - bias
-        """
-        bias = (self.base_layer.bias
-                if not self.base_layer.skip_bias_add else None)
-
-        # Matrix multiply.
-        output = self.apply(input_, bias)
-
-        output_bias = (self.base_layer.bias
-                       if self.base_layer.skip_bias_add else None)
-        return output, output_bias
-
-    def apply(self,
-              x: torch.Tensor,
-              bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        output = self.base_layer.quant_method.apply(self.base_layer, x, bias)
-        lora_in_results = self.mlp_lora_in(output)
-        lora_results = self.mlp_lora_out(lora_in_results)
-        return output + lora_results
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        output = self.base_layer.quant_method.apply(hidden_states)
+        mome_in_results = self.mlp_mome_in[0](output)
+        mome_out_results = self.mlp_mome_out[0](mome_in_results)
+        return output + mome_out_results
 
     @classmethod
     def can_replace_layer(
