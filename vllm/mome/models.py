@@ -474,8 +474,7 @@ class LRUCacheMoMEModelManager(MoMEModelManager):
         """Add a MoMEModel to the manager."""
         logger.debug(
             "Adding mome. Model id: %d, "
-            "int id: %d, "
-            "scaling factor: %s", mome.id, mome.id, mome.scaling_factor)
+            "int id: %d, ", mome.id, mome.id)
         if mome.id not in self._registered_adapters:
             self._add_adapter(mome)
             was_added = True
