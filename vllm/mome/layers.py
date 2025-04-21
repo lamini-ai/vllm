@@ -43,8 +43,18 @@ logger = init_logger(__name__)
 
 
 def _get_mome_device(base_layer: nn.Module) -> torch.device:
-    for param in base_layer.parameters():
-        return param.device
+    # unquantizedLinear
+    if hasattr(base_layer, "weight"):
+        return base_layer.weight.device
+    # Compressed Tensor
+    elif hasattr(base_layer, "weight_packed"):
+        return base_layer.weight_packed.device
+    # GPTQ/AWQ
+    elif hasattr(base_layer, "qweight"):
+        return base_layer.qweight.device
+    else:
+        for param in base_layer.parameters():
+            return param.device
     raise ValueError(f"Unsupported get device from base layer: {base_layer}")
 
 def get_hidden_size(layer):
@@ -242,7 +252,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     def can_replace_layer(cls, source_layer: nn.Module,
                           mome_config: MoMEConfig, packed_modules_list: List,
                           model_config: Optional[PretrainedConfig]) -> bool:
-        return type(source_layer) is LlamaAttention      
+        return type(source_layer) is LlamaAttention    
 
 
 class MoMEAttentionLayer(nn.Module):
@@ -385,7 +395,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     def __init__(self, base_layer: LlamaMLP):
         super().__init__()
         self.base_layer = base_layer
-        self.hidden_size = self.base_layer.down_proj.output_size
+        # self.hidden_size = self.base_layer.down_proj.output_size
+        self.hidden_size = get_hidden_size(self.base_layer)
         self.device = _get_mome_device(self.base_layer)
 
         # mapping tensors
@@ -408,8 +419,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        lora_a_out_size = mome_config.max_mome_rank
-        lora_b_out_size = self.hidden_size
+        # lora_a_out_size = mome_config.max_mome_rank
+        # lora_b_out_size = self.hidden_size
         # self.lora_a_tensors = torch.zeros(
         #     (                
         #         max_loras,
@@ -451,9 +462,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #                            lora_a.T, non_blocking=True)
         # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
         #                            lora_b.T, non_blocking=True)
-        hidden_size = get_hidden_size(self.base_layer)
-        self.mlp_mome_in[index] = nn.Linear(hidden_size, rank, bias=False)
-        self.mlp_mome_out[index] = nn.Linear(rank, hidden_size, bias=False)
+        self.mlp_mome_in[index] = nn.Linear(self.hidden_size, rank, bias=False)
+        self.mlp_mome_out[index] = nn.Linear(rank, self.hidden_size, bias=False)
         self._reset_parameters(index)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
