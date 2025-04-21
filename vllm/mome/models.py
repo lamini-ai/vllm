@@ -447,6 +447,8 @@ class MoMEModelManager(AdapterModelManager):
 
 def create_mome_manager(
         model: nn.Module,
+        max_num_seqs: int,
+        max_num_batched_tokens: int,
         mome_config: MoMEConfig,
         device: torch.device,
         mome_manager_cls: Type[MoMEModelManager] = MoMEModelManager,
@@ -455,6 +457,8 @@ def create_mome_manager(
     logger.warning(f"Make Sure Model {type(model)} is supported for MoME.")
     mome_manager = mome_manager_cls(
         model=model,
+        max_num_seqs=max_num_seqs,
+        max_num_batched_tokens=max_num_batched_tokens,
         mome_config=mome_config,
         device=device,
         **kwargs)

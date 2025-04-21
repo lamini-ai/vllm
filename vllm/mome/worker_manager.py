@@ -30,6 +30,8 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
     def __init__(
         self,
+        max_num_seqs: int,
+        max_num_batched_tokens: int,
         mome_config: MoMEConfig,
         device: torch.device,
         mome_model_cls: Type[MoMEModel] = MoMEModel,
@@ -37,6 +39,8 @@ class WorkerMoMEManager(AbstractWorkerManager):
     ):
         self._mome_model_cls = mome_model_cls
         self._cached_dummy_mome: Union[None, Literal[False], MoMEModel] = False
+        self.max_num_seqs = max_num_seqs
+        self.max_num_batched_tokens = max_num_batched_tokens
         self.mome_config = mome_config
         self.max_position_embeddings = max_position_embeddings
         super().__init__(device)
@@ -61,6 +65,8 @@ class WorkerMoMEManager(AbstractWorkerManager):
     ) -> Any:
         mome_manager = create_mome_manager(
             model,
+            max_num_seqs=self.max_num_seqs,
+            max_num_batched_tokens=self.max_num_batched_tokens,
             mome_config=self.mome_config,
             device=self.device,
             mome_manager_cls=self._manager_cls,

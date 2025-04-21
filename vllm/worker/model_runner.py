@@ -1232,6 +1232,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
         if self.mome_config:
             self.mome_manager = WorkerMoMEManager(
+                self.scheduler_config.max_num_seqs,
+                self.scheduler_config.max_num_batched_tokens,
                 self.mome_config,
                 self.device,
             )
