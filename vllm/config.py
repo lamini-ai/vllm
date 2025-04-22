@@ -2102,6 +2102,19 @@ class MoMEConfig:
             raise ValueError(
                 f"max_cpu_momes ({self.max_cpu_momes}) must be >= "
                 f"max_momes ({self.max_momes})")
+     
+    def verify_with_model_config(self, model_config: ModelConfig):
+        if self.mome_dtype in (None, "auto"):
+            self.mome_dtype = model_config.dtype
+        elif isinstance(self.mome_dtype, str):
+            self.mome_dtype = getattr(torch, self.mome_dtype)
+        if model_config.quantization and model_config.quantization not in [
+                "awq", "gptq"
+        ]:
+            # TODO support marlin
+            logger.warning("%s quantization is not tested with LoRA yet.",
+                           model_config.quantization)
+
 
 @dataclass
 class LoRAConfig:
