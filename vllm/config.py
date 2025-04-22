@@ -3248,6 +3248,8 @@ class VllmConfig:
             self.lora_config.verify_with_model_config(self.model_config)
             self.lora_config.verify_with_scheduler_config(
                 self.scheduler_config)
+        if self.mome_config:
+            self.mome_config.verify_with_model_config(self.model_config)
         if self.prompt_adapter_config:
             self.prompt_adapter_config.verify_with_model_config(
                 self.model_config)
