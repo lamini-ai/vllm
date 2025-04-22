@@ -53,7 +53,7 @@ class MoMELayerWeights:
         return cls(module_name, rank, None, None, None, None)
 
     @classmethod
-    def create_dummy_lora_weights(
+    def create_dummy_mome_weights(
             cls,
             module_name: str,
             input_dim: int,

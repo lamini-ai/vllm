@@ -71,6 +71,8 @@ logger = init_logger(__name__)
 
 LORA_WARMUP_RANK = 8
 
+MOME_WARMUP_RANK = 32
+
 _NUM_WARMUP_ITERS = 2
 
 TModelInputForGPU = TypeVar('TModelInputForGPU', bound="ModelInputForGPU")
@@ -216,6 +218,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self.lora_prompt_mapping.clear()  # type: ignore
             self.lora_requests.clear()  # type: ignore
             self.mome_index_mapping.clear()  # type: ignore
+            self.mome_prompt_mapping.clear()  # type: ignore
             self.mome_requests.clear()  # type: ignore
             self.prompt_adapter_index_mapping.clear()  # type: ignore
             self.prompt_adapter_prompt_mapping.clear()  # type: ignore
@@ -1379,6 +1382,25 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                         dummy_lora_requests[idx % len(dummy_lora_requests)]
                         for idx in range(max_num_seqs)
                     ]
+            dummy_mome_requests: List[MoMERequest] = []
+            dummy_mome_requests_per_seq: List[MoMERequest] = []
+            if self.mome_config:
+                assert self.mome_manager is not None
+                with self.mome_manager.dummy_mome_cache():
+                    for idx in range(self.mome_config.max_momes):
+                        mome_id = idx + 1
+                        dummy_mome_request = MoMERequest(
+                            mome_name=f"warmup_{mome_id}",
+                            mome_int_id=mome_id,
+                            mome_path="/not/a/real/path",
+                        )
+                        self.mome_manager.add_dummy_mome(dummy_mome_request,
+                                                         rank=MOME_WARMUP_RANK)
+                        dummy_mome_requests.append(dummy_mome_request)
+                    dummy_mome_requests_per_seq = [
+                        dummy_mome_requests[idx % len(dummy_mome_requests)]
+                        for idx in range(max_num_seqs)
+                    ]
 
             # Profile memory usage with max_num_sequences sequences and the
             # total number of tokens equal to max_num_batched_tokens.
@@ -1423,6 +1445,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                     block_tables=None,
                     lora_request=dummy_lora_requests_per_seq[group_id]
                     if dummy_lora_requests_per_seq else None,
+                    mome_request=dummy_mome_requests_per_seq[group_id]
+                    if dummy_mome_requests_per_seq else None,
                     multi_modal_data=dummy_data.multi_modal_data,
                     multi_modal_placeholders=dummy_data.
                     multi_modal_placeholders,
@@ -1463,6 +1487,10 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                 # Remove dummy loras.
                 assert self.lora_manager is not None
                 self.remove_all_loras()
+            if self.mome_config:
+                # Remove dummy momes.
+                assert self.mome_manager is not None
+                self.remove_all_momes()
             return
 
     def remove_all_loras(self):

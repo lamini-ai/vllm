@@ -161,26 +161,26 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        # lora_a_out_size = mome_config.max_mome_rank
-        # lora_b_out_size = self.output_size
-        # self.lora_a_tensors = torch.zeros(
-        #     (                
-        #         max_loras,
-        #         lora_a_out_size,
-        #         self.input_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
-        # self.lora_b_tensors = torch.zeros(
-        #     (
-        #         max_loras,
-        #         lora_b_out_size,
-        #         lora_a_out_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.output_size
+        self.lora_a_tensors = torch.zeros(
+            (                
+                max_loras,
+                lora_a_out_size,
+                self.input_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        self.lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_b_out_size,
+                lora_a_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
         self.mome_attention_list = [None for _ in range(max_loras)]
 
     def reset_mome(self, index: int):
@@ -419,26 +419,26 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        # lora_a_out_size = mome_config.max_mome_rank
-        # lora_b_out_size = self.hidden_size
-        # self.lora_a_tensors = torch.zeros(
-        #     (                
-        #         max_loras,
-        #         lora_a_out_size,
-        #         self.input_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
-        # self.lora_b_tensors = torch.zeros(
-        #     (
-        #         max_loras,
-        #         lora_b_out_size,
-        #         lora_a_out_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.hidden_size
+        self.lora_a_tensors = torch.zeros(
+            (                
+                max_loras,
+                lora_a_out_size,
+                self.input_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        self.lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_b_out_size,
+                lora_a_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
 
         self.mlp_lora_in = [None for _ in range(max_loras)]
         self.mlp_lora_out = [None for _ in range(max_loras)]
@@ -518,6 +518,28 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         model_config: Optional[PretrainedConfig] = None,
     ) -> None:
         self.mome_config = mome_config
+
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.hidden_size
+        self.lora_a_tensors = torch.zeros(
+            (                
+                max_loras,
+                lora_a_out_size,
+                self.input_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        self.lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_b_out_size,
+                lora_a_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+
         self.head_lora_in = [None for _ in range(max_loras)]
         self.head_lora_out = [None for _ in range(max_loras)]
 

@@ -405,6 +405,28 @@ class MoMEModelManager(AdapterModelManager):
                                    self.base_embedding_indices,
                                    self.indices_len)
 
+    def create_dummy_mome(
+            self,
+            lora_id: int,
+            rank: int) -> MoMEModel:
+        """Create zero-initialized LoRAModel for warmup."""
+        model = MoMEModel(lora_id, rank, {})
+        for module_name, module in self.model.named_modules():
+            if (not self._match_target_modules(module_name)
+                    or not isinstance(module, BaseLayerWithMoME)):
+                continue
+            # parts = module_name.split(".")
+            mome = MoMELayerWeights.create_dummy_mome_weights(
+                module_name,
+                module.lora_a_tensors[0].shape[-1],
+                module.lora_b_stacked[0].shape[-2],
+                rank,
+                module.mome_a_stacked[0].dtype,
+                "cpu",
+            )
+            model.momes[module_name] = mome
+        return model
+
     def _match_target_modules(self, module_name: str):
         return any(
             re.match(
