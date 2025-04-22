@@ -421,7 +421,7 @@ class MoMEModelManager(AdapterModelManager):
                 module.lora_a_tensors[0].shape[-1],
                 module.lora_b_stacked[0].shape[-2],
                 rank,
-                module.mome_a_stacked[0].dtype,
+                module.lora_a_tensors[0].dtype,
                 "cpu",
             )
             model.momes[module_name] = mome
