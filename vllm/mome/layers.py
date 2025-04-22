@@ -139,11 +139,10 @@ class BaseLayerWithMoME(nn.Module):
 
 
 class BaseMoMEAttentionLayer(BaseLayerWithMoME):
-    def __init__(self, base_layer: ReplicatedLinear):
+    def __init__(self, base_layer: LlamaAttention):
         super().__init__()
         self.base_layer = base_layer
-        self.input_size = self.base_layer.input_size
-        self.output_size = self.base_layer.output_size
+        self.hidden_size = self.base_layer.hidden_size
         self.device = _get_mome_device(self.base_layer)
 
         self.indices_gpu: torch.Tensor
@@ -162,12 +161,12 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         self.mome_config = mome_config
 
         lora_a_out_size = mome_config.max_mome_rank
-        lora_b_out_size = self.output_size
+        lora_b_out_size = self.hidden_size
         self.lora_a_tensors = torch.zeros(
             (                
                 max_loras,
                 lora_a_out_size,
-                self.input_size,
+                lora_b_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
@@ -425,7 +424,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
             (                
                 max_loras,
                 lora_a_out_size,
-                self.input_size,
+                lora_b_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
@@ -525,7 +524,7 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
             (                
                 max_loras,
                 lora_a_out_size,
-                self.input_size,
+                lora_b_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
