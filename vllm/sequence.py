@@ -743,6 +743,10 @@ class SequenceGroup:
     @property
     def lora_int_id(self) -> int:
         return self.lora_request.lora_int_id if self.lora_request else 0
+    
+    @property
+    def mome_int_id(self) -> int:
+        return self.mome_request.mome_int_id if self.mome_request else 0
 
     @property
     def prompt_adapter_id(self) -> int:

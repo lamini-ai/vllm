@@ -48,6 +48,7 @@ def from_layer(layer: nn.Module,
             return ret
     return layer
 
+
 def replace_submodule(model: nn.Module, module_name: str,
                       new_module: nn.Module) -> nn.Module:
     """Replace a submodule in a model with a new module."""

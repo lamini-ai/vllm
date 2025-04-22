@@ -29,6 +29,7 @@ from vllm.inputs import PromptType, SingletonPrompt, TextPrompt, TokensPrompt
 from vllm.inputs.parse import is_token_prompt, parse_and_batch_prompt
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor.guided_decoding.guided_fields import (
     GuidedDecodingRequest, LLMGuidedOptions)
 from vllm.outputs import (ClassificationRequestOutput, EmbeddingRequestOutput,
@@ -283,6 +284,7 @@ class LLM:
         *,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -299,6 +301,7 @@ class LLM:
         prompt_token_ids: Optional[List[int]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -315,6 +318,7 @@ class LLM:
         prompt_token_ids: Optional[List[List[int]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -332,6 +336,7 @@ class LLM:
         prompt_token_ids: List[int],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -349,6 +354,7 @@ class LLM:
         prompt_token_ids: List[List[int]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -364,6 +370,7 @@ class LLM:
         prompt_token_ids: Union[List[int], List[List[int]]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -384,6 +391,7 @@ class LLM:
         prompt_token_ids: Optional[Union[List[int], List[List[int]]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         guided_options_request: Optional[Union[LLMGuidedOptions,
                                                GuidedDecodingRequest]] = None,
@@ -462,6 +470,7 @@ class LLM:
             prompts=parsed_prompts,
             params=sampling_params,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
             guided_options=guided_options_request,
             priority=priority)
@@ -625,6 +634,7 @@ class LLM:
                                         List[SamplingParams]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         chat_template: Optional[str] = None,
         chat_template_content_format: ChatTemplateContentFormatOption = "auto",
         add_generation_prompt: bool = True,
@@ -750,6 +760,7 @@ class LLM:
             sampling_params=sampling_params,
             use_tqdm=use_tqdm,
             lora_request=lora_request,
+            mome_request=mome_request,
         )
 
     @overload
@@ -762,6 +773,7 @@ class LLM:
         *,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...
@@ -776,6 +788,7 @@ class LLM:
         prompt_token_ids: Optional[List[int]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...
@@ -790,6 +803,7 @@ class LLM:
         prompt_token_ids: Optional[List[List[int]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...
@@ -805,6 +819,7 @@ class LLM:
         prompt_token_ids: List[int],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...
@@ -833,6 +848,7 @@ class LLM:
         prompt_token_ids: Union[List[int], List[List[int]]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...
@@ -851,6 +867,7 @@ class LLM:
         prompt_token_ids: Optional[Union[List[int], List[List[int]]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         """Apply pooling to the hidden states corresponding to the input
@@ -912,6 +929,7 @@ class LLM:
             prompts=parsed_prompts,
             params=pooling_params,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )
 
@@ -926,6 +944,7 @@ class LLM:
         *,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[EmbeddingRequestOutput]:
         """
@@ -955,6 +974,7 @@ class LLM:
         items = self.encode(prompts,
                             use_tqdm=use_tqdm,
                             lora_request=lora_request,
+                            mome_request=mome_request,
                             prompt_adapter_request=prompt_adapter_request)
 
         return [EmbeddingRequestOutput.from_base(item) for item in items]
@@ -966,6 +986,7 @@ class LLM:
         *,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[ClassificationRequestOutput]:
         """
@@ -995,6 +1016,7 @@ class LLM:
         items = self.encode(prompts,
                             use_tqdm=use_tqdm,
                             lora_request=lora_request,
+                            mome_request=mome_request,
                             prompt_adapter_request=prompt_adapter_request)
 
         return [ClassificationRequestOutput.from_base(item) for item in items]
@@ -1007,6 +1029,7 @@ class LLM:
         truncate_prompt_tokens: Optional[int] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[ScoringRequestOutput]:
 
@@ -1014,6 +1037,7 @@ class LLM:
             text_1 + text_2,
             use_tqdm=use_tqdm,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request)
         encoded_output_1 = encoded_output[0:len(text_1)]
         encoded_output_2 = encoded_output[len(text_1):]
@@ -1057,6 +1081,7 @@ class LLM:
         truncate_prompt_tokens: Optional[int] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[ScoringRequestOutput]:
 
@@ -1091,6 +1116,7 @@ class LLM:
             prompts=parsed_prompts,
             params=pooling_params,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )
 
@@ -1109,6 +1135,7 @@ class LLM:
         truncate_prompt_tokens: Optional[int] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[ScoringRequestOutput]:
         """Generate similarity scores for all pairs ``<text,text_pair>``.
@@ -1193,12 +1220,13 @@ class LLM:
         if self.llm_engine.model_config.is_cross_encoder:
             return self._cross_encoding_score(tokenizer, text_1, text_2,
                                               truncate_prompt_tokens, use_tqdm,
-                                              lora_request,
+                                              lora_request, mome_request,
                                               prompt_adapter_request)
         else:
             return self._embedding_score(tokenizer, text_1, text_2,
                                          truncate_prompt_tokens, use_tqdm,
-                                         lora_request, prompt_adapter_request)
+                                         lora_request, mome_request,
+                                         prompt_adapter_request)
 
     def start_profile(self) -> None:
         self.llm_engine.start_profile()
@@ -1286,6 +1314,7 @@ class LLM:
         params: Union[SamplingParams, Sequence[SamplingParams], PoolingParams,
                       Sequence[PoolingParams]],
         lora_request: Optional[Union[Sequence[LoRARequest], LoRARequest]],
+        mome_request: Optional[Union[Sequence[MoMERequest], MoMERequest]],
         prompt_adapter_request: Optional[PromptAdapterRequest],
         guided_options: Optional[GuidedDecodingRequest] = None,
         priority: Optional[List[int]] = None,
@@ -1310,6 +1339,10 @@ class LLM:
                       list) and len(lora_request) != num_requests:
             raise ValueError("The lengths of prompts and lora_request "
                              "must be the same.")
+        if isinstance(mome_request,
+                        list) and len(mome_request) != num_requests:
+            raise ValueError("The lengths of prompts and mome_request "
+                             "must be the same.")
 
         for sp in params if isinstance(params, list) else (params, ):
             if isinstance(sp, SamplingParams):
@@ -1325,6 +1358,8 @@ class LLM:
                 params[i] if isinstance(params, Sequence) else params,
                 lora_request=lora_request[i] if isinstance(
                     lora_request, Sequence) else lora_request,
+                mome_request=mome_request[i] if isinstance(
+                    mome_request, Sequence) else mome_request,
                 prompt_adapter_request=prompt_adapter_request,
                 priority=priority[i] if priority else 0,
             )
@@ -1334,6 +1369,7 @@ class LLM:
         prompt: PromptType,
         params: Union[SamplingParams, PoolingParams],
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
     ) -> None:
@@ -1343,6 +1379,7 @@ class LLM:
             prompt,
             params,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
             priority=priority,
         )
