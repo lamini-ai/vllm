@@ -16,7 +16,7 @@ import torch
 from typing_extensions import TypeVar, deprecated
 
 import vllm.envs as envs
-from vllm.config import (DecodingConfig, LoRAConfig, ModelConfig,
+from vllm.config import (DecodingConfig, LoRAConfig, MoMEConfig, ModelConfig,
                          ObservabilityConfig, ParallelConfig, SchedulerConfig,
                          VllmConfig)
 from vllm.core.scheduler import (ScheduledSequenceGroup, Scheduler,
@@ -764,7 +764,6 @@ class LLMEngine:
             prompt,
             request_id=request_id,
             lora_request=lora_request,
-            # mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )
         processed_inputs = self.input_processor(preprocessed_inputs)
@@ -916,6 +915,10 @@ class LLMEngine:
     def get_lora_config(self) -> LoRAConfig:
         """Gets the LoRA configuration."""
         return self.lora_config
+
+    def get_mome_config(self) -> MoMEConfig:
+        """Gets the MoME configuration."""
+        return self.mome_config
 
     def get_num_unfinished_requests(self) -> int:
         """Gets the number of unfinished requests."""

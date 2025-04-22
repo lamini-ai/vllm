@@ -12,7 +12,7 @@ from weakref import ReferenceType
 from typing_extensions import deprecated
 
 import vllm.envs as envs
-from vllm.config import (DecodingConfig, LoRAConfig, ModelConfig,
+from vllm.config import (DecodingConfig, LoRAConfig, MoMEConfig, ModelConfig,
                          ParallelConfig, SchedulerConfig, VllmConfig)
 from vllm.core.scheduler import SchedulerOutputs
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -1165,6 +1165,10 @@ class AsyncLLMEngine(EngineClient):
     async def get_lora_config(self) -> LoRAConfig:
         """Get the lora configuration of the vLLM engine."""
         return self.engine.get_lora_config()
+
+    async def get_mome_config(self) -> MoMEConfig:
+        """Get the mome configuration of the vLLM engine."""
+        return self.engine.get_mome_config()
 
     async def do_log_stats(
             self,

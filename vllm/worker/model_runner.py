@@ -1238,6 +1238,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                 self.device,
             )
             self.model = self.mome_manager.create_mome_manager(self.model)
+            logger.info("self.model after mome: ", self.model)
 
         if self.prompt_adapter_config:
             self.prompt_adapter_manager = LRUCacheWorkerPromptAdapterManager(
@@ -1336,10 +1337,9 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
         with self.set_in_profile_run():
             # print("device: ", self.device)
             # original_model = self.model
-            print("mome ------- start")
+            # print("mome ------- start")
             # self.model = load_mome_model_for_inference(self.model, "/app/lamini/jobs/34916/checkpoints/checkpoint-60")
-            print("mome ------- end")
-
+            
             # Try to use the original model's methods to replace the mome model's, but mome_model change has self.model.mome_model.lm_head, vllm need self.model.lm_head
             # for method in ["compute_logits", "get_input_embeddings", "set_input_embeddings"]:
             #     method_impl = getattr(original_model, method, None)
@@ -1350,6 +1350,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             # if hasattr(self.model, "mome_model") and hasattr(self.model.mome_model, "lm_head"):
             #     self.model.lm_head = self.model.mome_model.lm_head
             #     self.model.lm_head = self.model.lm_head.to(self.device)
+            # print("mome ------- end")
 
             # Enable top-k sampling to reflect the accurate memory usage.
             sampling_params = \

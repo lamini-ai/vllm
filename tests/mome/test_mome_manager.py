@@ -13,8 +13,6 @@ from vllm.mome.layers import (LoraMLPAdaptor, BaseMoMEAttentionLayer)
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.models import (MoMEMapping, MoMEModel, MoMEModelManager)
 from vllm.mome.request import MoMERequest
-from vllm.lora.worker_manager import (LRUCacheWorkerMoMEManager,
-                                      WorkerMoMEManager)
 from vllm.model_executor.models.llama import LlamaMLP
 from vllm.platforms import current_platform
 
