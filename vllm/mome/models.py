@@ -419,7 +419,7 @@ class MoMEModelManager(AdapterModelManager):
             mome = MoMELayerWeights.create_dummy_mome_weights(
                 module_name,
                 module.lora_a_tensors[0].shape[-1],
-                module.lora_b_stacked[0].shape[-2],
+                module.lora_b_tensors[0].shape[-2],
                 rank,
                 module.lora_a_tensors[0].dtype,
                 "cpu",
