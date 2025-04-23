@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 import os
 import random
 import tempfile
@@ -12,6 +10,9 @@ from vllm.mome.models import MoMEMapping
 from vllm.mome.request import MoMERequest
 from vllm.worker.worker import Worker
 
+import torch
+torch.ops.load_library("/usr/local/lib/python3.12/dist-packages/vllm/_C.abi3.so")
+torch.ops.load_library("/usr/local/lib/python3.12/dist-packages/vllm/_rocm_C.abi3.so")
 
 @patch.dict(os.environ, {"RANK": "0"})
 def test_worker_apply_mome(mome_adapter_files):
@@ -74,3 +75,4 @@ def test_worker_apply_mome(mome_adapter_files):
         assert worker.list_momes().issuperset(
             {mome_request.mome_int_id
              for mome_request in iter_mome_requests})
+    
