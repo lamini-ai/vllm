@@ -366,25 +366,27 @@ class MoMEModelManager(AdapterModelManager):
                 continue 
             parts = module_name.split(".")[-1]
             packed_moduled_lst = self.packed_modules_mapping.get(parts, [])
-            # 1. MLP LoRA injection
+            # 1. LoRA Layer for mlp
             if "mlp" in module_name:
-                # add_mome_adaptors_to_mlp_layer
+                logger.info("mlp in module_name: %s, start replace submodule", module_name)
                 new_module = replace_submodule(
                     self.model, 
                     module_name, 
                     from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst,
                                self.model.config)
                 )
-            # 2. Extra LoRA for head
+            # 2. LoRA Layer for lm_head
             elif "lm_head" in module_name:
+                logger.info("lm_head in module_name: %s, start replace submodule", module_name)
                 new_module = replace_submodule(
                     self.model,
                     module_name,
                     from_layer(module, self.mome_slots, self.mome_config, 
                                                 packed_moduled_lst, self.model.config)
                 )
-            # 3. Standard MoME adapter
+            # 3. MoME Attention Layer
             elif "self_attn" in module_name:
+                logger.info("self_attn in module_name: %s, start replace submodule", module_name)
                 new_module = replace_submodule(
                     self.model,
                     module_name,
