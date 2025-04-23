@@ -463,8 +463,8 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         #                            lora_a.T, non_blocking=True)
         # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
         #                            lora_b.T, non_blocking=True)
-        self.mlp_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False)
-        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False)
+        self.mlp_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False, device=self.device)
+        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False, device=self.device)
         self._reset_parameters(index)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -493,10 +493,10 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
 
 class LoraHeadAdaptor(BaseLayerWithMoME):
     # TODO: update LoraHeadAdaptor init to work with from_layer_logits_processor
-    def __init__(self, base_layer: LinearBase):
+    def __init__(self, base_layer: ParallelLMHead):
         super().__init__()
         self.base_layer = base_layer
-        self.hidden_size = self.base_layer.weight.shape
+        self.hidden_size = self.base_layer.embedding_dim
         # Add a mome attention layer
 
         self.device = _get_mome_device(self.base_layer)
@@ -559,8 +559,8 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         mome_index_k: int,
     ):
         self.reset_mome(index)
-        self.head_lora_in[index] = nn.Linear(self.hidden_size[1], rank, bias=False)
-        self.head_lora_out[index] = nn.Linear(rank, self.hidden_size[0], bias=False)
+        self.head_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False, device=self.device)
+        self.head_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False, device=self.device)
         self._reset_parameters(index)
 
     # Call layer with all inputs and kwargs
