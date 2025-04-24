@@ -409,10 +409,10 @@ class MoMEModelManager(AdapterModelManager):
 
     def create_dummy_mome(
             self,
-            lora_id: int,
+            mome_id: int,
             rank: int) -> MoMEModel:
         """Create zero-initialized LoRAModel for warmup."""
-        model = MoMEModel(lora_id, rank, {})
+        model = MoMEModel(mome_id, rank, {})
         for module_name, module in self.model.named_modules():
             if (not self._match_target_modules(module_name)
                     or not isinstance(module, BaseLayerWithMoME)):

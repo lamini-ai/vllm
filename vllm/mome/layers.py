@@ -493,8 +493,11 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         super().__init__()
         self.base_layer = base_layer
         self.hidden_size = self.base_layer.embedding_dim
-        # Add a mome attention layer
-
+        self.linear_method = getattr(self.base_layer, "linear_method", None)
+        if self.linear_method is None:
+            raise ValueError(
+                "LoraHeadAdaptor init ERROR. The linear_method is not set in the base layer."
+            )   
         self.device = _get_mome_device(self.base_layer)
 
         # mapping tensors
@@ -506,6 +509,14 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         self.head_lora_in = []
         self.head_lora_out = []
 
+    @property
+    def weight(self):
+        return self.base_layer.weight
+    
+    @property
+    def bias(self):
+        return self.base_layer.bias
+    
     def create_mome_weights(
         self,
         max_loras: int,

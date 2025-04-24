@@ -44,7 +44,7 @@ def from_layer(layer: nn.Module,
                                       packed_modules_list=packed_modules_list,
                                       model_config=model_config):
             logger.info("getting MoME class %s for layer %s",
-                        mome_cls.__name__, layer)
+                        mome_cls.__name__, layer.__class__.__name__)
             ret = mome_cls(layer)
             ret.create_mome_weights(max_momes, mome_config, model_config)
             logger.info("%s created MoME weights success", mome_cls.__name__)
