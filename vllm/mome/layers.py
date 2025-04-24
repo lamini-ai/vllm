@@ -150,7 +150,7 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mome_attention = None
+        self.mome_attention_list = None
 
     def create_mome_weights(
         self,
@@ -218,8 +218,9 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
     # Call layer with all inputs and kwargs
     def forward(
         self,
-        hidden_states: torch.Tensor
-    ):
+        hidden_states: torch.Tensor,
+        **kwargs,
+    ) -> torch.Tensor:
         # logger.debug(f"hidden states dtype: {hidden_states.dtype}")
         # if attention_mask is not None:
         #    logger.debug(f"attention mask dtype: {attention_mask.dtype}")
@@ -230,10 +231,10 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         # if past_key_value is not None:
         #    logger.debug(f"past_key_value dtype: {past_key_value}")
 
-        layer_outputs = self.base_layer(hidden_states)
+        layer_outputs = self.base_layer(hidden_states=hidden_states, **kwargs)
         logger.debug("layer_outputs.shape:", layer_outputs.shape)
         # project the mome attention output to the same size as the transformer attention output
-        mome_attention_output = self.mome_attention[0].forward(hidden_states)
+        mome_attention_output = self.mome_attention_list[0].forward(hidden_states)
         logger.debug(f"mome_attention_output shape: {mome_attention_output.shape}")
         # logger.debug(
         #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
@@ -290,7 +291,8 @@ class MoMEAttentionLayer(nn.Module):
     # Call layer with all inputs and kwargs
     def forward(
         self, hidden_states: torch.Tensor,
-    ):
+        **kwargs,
+    )-> torch.Tensor:
         # print("hidden_states.shape:", hidden_states.shape)
         query = self.project_query(hidden_states)
         # print("query.shape:", query.shape)
@@ -334,13 +336,12 @@ class MoMEAttentionLayer(nn.Module):
 
     def get_key_and_value(self, query):
         key, value, indices = self.get_key_and_value_from_index(query)
-        self.embeddings["embedding_indices"][self.embedding_index] = indices
         return key, value
 
     def get_key_and_value_from_index(self, query):
-        print("query size: ", query.shape)
-        # print("query.shape[0]: ", query.shape[0])
-        # print("query.shape[1]: ", query.shape[1])
+        logger.debug("query size: %s", query.shape)
+        # logger.debug("query.shape[0]: ", query.shape[0])
+        # logger.debug("query.shape[1]: ", query.shape[1])
         if query.dim() == 2:
             batch_size = 1
             sequence_length = query.shape[0]
@@ -469,15 +470,10 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
-        mome_in_results = self.mlp_lora_in[0](output)
+        logger.debug(f"original mlp output shape: {output.shape}")
+        mome_in_results = self.mlp_lora_in[0](hidden_states)
         mome_out_results = self.mlp_lora_out[0](mome_in_results)
-        # logger.debug(
-        #     f"mome_results: {mome_results} {torch.histogram(mome_results, bins=4)}"
-        # )
-        # logger.debug(
-        #     f"base_model_results: {base_model_results} {torch.histogram(base_model_results, bins=4)}"
-        # )
-        # sum the two outputs
+        logger.debug(f"mome mlp output shape: {mome_out_results.shape}")
         return output + mome_out_results
 
     @classmethod

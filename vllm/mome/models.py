@@ -198,7 +198,7 @@ class MoMEModel(AdapterModel):
             mome_dir: the directory of the local checkpoint.
             mome_model_id: the id (model name) of the MoME model.
         """
-
+        logger.info("Loading MoME model from mome_dir: %s", mome_dir)
         mome_tensor_path = os.path.join(mome_dir, "adapter_model.safetensors")
         mome_bin_file_path = os.path.join(mome_dir, "adapter_model.bin")
 
