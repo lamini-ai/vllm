@@ -461,7 +461,7 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
 
     # MoME specific attributes, name not match official name
     supported_mome_modules = [
-        "mome_attention", "mlp", "lm_head"
+        "self_attn", "mlp", "lm_head"
     ]
 
     # Mistral/Llama models can also be loaded with --load-format mistral

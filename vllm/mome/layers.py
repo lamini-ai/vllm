@@ -293,20 +293,21 @@ class MoMEAttentionLayer(nn.Module):
         self, hidden_states: torch.Tensor,
         **kwargs,
     )-> torch.Tensor:
-        # print("hidden_states.shape:", hidden_states.shape)
-        query = self.project_query(hidden_states)
-        # print("query.shape:", query.shape)
-        key, value = self.get_key_and_value(query)
+        logger.info("hidden_states.shape: %s", hidden_states.shape)
 
-        # logger.debug(f"query shape: {query.shape}, type: {query.dtype}")
-        # logger.debug(f"key shape: {key.shape}, type: {key.dtype}")
-        # logger.debug(f"value shape: {value.shape}, type: {value.dtype}")
+        query = self.project_query(hidden_states)
+        logger.info("query.shape: %s, query.dtype: %s", query.shape, query.dtype)
+
+        key, value = self.get_key_and_value(query)
+        logger.info("key.shape: %s, key.dtype: %s", key.shape, key.dtype)
+        logger.info("value.shape: %s, value.dtype: %s", value.shape, value.dtype)
 
         # convert key to the dtype of the query
         target_dtype = hidden_states.dtype
         query = query.to(target_dtype)
         key = key.to(target_dtype)
         value = value.to(target_dtype)
+        logger.info("query,key,value to original dtype: %s success", target_dtype)
 
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = torch.nn.functional.scaled_dot_product_attention(
@@ -339,7 +340,7 @@ class MoMEAttentionLayer(nn.Module):
         return key, value
 
     def get_key_and_value_from_index(self, query):
-        logger.debug("query size: %s", query.shape)
+        # logger.debug("query size: %s", query.shape)
         # logger.debug("query.shape[0]: ", query.shape[0])
         # logger.debug("query.shape[1]: ", query.shape[1])
         if query.dim() == 2:
@@ -350,7 +351,6 @@ class MoMEAttentionLayer(nn.Module):
             batch_size = query.shape[0]
             sequence_length = query.shape[1]
             embedding_dimension = query.shape[2]
-
         # logger.debug(f"batch_size: {batch_size}")
         # logger.debug(f"sequence_length: {sequence_length}")
         # logger.debug(f"embedding_dimension: {embedding_dimension}")
@@ -561,8 +561,8 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
 
     # Call layer with all inputs and kwargs
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        output = self.base_layer.quant_method.apply(hidden_states)
-        mome_in_results = self.head_lora_in[0](output)
+        output = self.base_layer(hidden_states)
+        mome_in_results = self.head_lora_in[0](hidden_states)
         mome_out_results = self.head_lora_out[0](mome_in_results)
         return output + mome_out_results
 
