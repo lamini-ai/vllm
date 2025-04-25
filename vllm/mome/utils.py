@@ -16,7 +16,7 @@ from vllm.logger import init_logger
 # yapf conflicts with isort for this block
 # yapf: disable
 
-from vllm.mome.layers import (BaseLayerWithMoME, BaseMoMEAttentionLayer,
+from vllm.mome.layers import (BaseLayerWithMoME, MoMEAttentionLayer,
                               LoraMLPAdaptor, LoraHeadAdaptor)
 # yapf: enable
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
@@ -26,7 +26,7 @@ from vllm.model_executor.models.utils import WeightsMapper
 logger = init_logger(__name__)
 
 _all_mome_classes: Set[Type[BaseLayerWithMoME]] = {
-    BaseMoMEAttentionLayer,
+    MoMEAttentionLayer,
     LoraMLPAdaptor,
     LoraHeadAdaptor
 }

@@ -36,6 +36,7 @@ from vllm.platforms import current_platform
 from vllm.logger import init_logger
 
 import inspect
+from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.model_definition.lamini_index import LaminiIndex
 
 
@@ -138,7 +139,7 @@ class BaseLayerWithMoME(nn.Module):
         raise NotImplementedError
 
 
-class BaseMoMEAttentionLayer(BaseLayerWithMoME):
+class MoMEAttentionLayer(BaseLayerWithMoME):
     def __init__(self, base_layer: LlamaAttention):
         super().__init__()
         self.base_layer = base_layer
@@ -150,7 +151,9 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mome_attention_list = None
+        # self.index = None
+        # self.index_k = 1
+        # self.index_dimension = None
 
     def create_mome_weights(
         self,
@@ -161,8 +164,12 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         self.mome_config = mome_config
 
         lora_a_out_size = mome_config.max_mome_rank
+        # index_dimension = mome_config.embedding_dimension
+        # TODO: get the index dimension from the mome_config
+        index_dimension = 384
         lora_b_out_size = self.hidden_size
-        self.lora_a_tensors = torch.zeros(
+
+        self.query_proj_lora_a_tensors = torch.zeros(
             (                
                 max_loras,
                 lora_a_out_size,
@@ -171,49 +178,74 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
             dtype=mome_config.mome_dtype,
             device=self.device,
         )
-        self.lora_b_tensors = torch.zeros(
+        self.query_proj_lora_b_tensors = torch.zeros(
             (
                 max_loras,
                 lora_b_out_size,
+                index_dimension,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        self.value_proj_lora_a_tensors = torch.zeros(
+            (
+                max_loras,
+                index_dimension,
                 lora_a_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
         )
-        self.mome_attention_list = [None for _ in range(max_loras)]
+        self.value_proj_lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_a_out_size,
+                lora_b_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
 
     def reset_mome(self, index: int):
-        # self.lora_a_tensors[index] = 0
-        # self.lora_b_tensors[index] = 0
-        self.mome_attention_list[index] = None
+        self.query_proj_lora_a_tensors[index] = 0
+        self.query_proj_lora_b_tensors[index] = 0
+        self.value_proj_lora_a_tensors[index] = 0
+        self.value_proj_lora_b_tensors[index] = 0
 
     def set_mome(
         self,
         index: int,
-        lora_a: torch.Tensor,
-        lora_b: torch.Tensor,
-        rank: int,
-        mome_index: LaminiIndex,
-        mome_index_k: int,
+        module_mome: MoMELayerWeights
     ):
         # Except for QKVParallelLinearWithLora and
         # MergedColumnParallelLinearWithLoRA, all other linear LoRA layers
         # store weights in a tuple of size 1. These two layers will
         # override this function.
-        # assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        assert (len(self.query_proj_lora_a_tensors) == len(self.query_proj_lora_b_tensors))
+        assert (len(self.value_proj_lora_a_tensors) == len(self.value_proj_lora_b_tensors))
         self.reset_mome(index)
-        # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
-        #                            lora_a.T, non_blocking=True)
-        # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
-        #                            lora_b.T, non_blocking=True)
         
-        self.mome_attention_list[index] = MoMEAttentionLayer(
-            hidden_size=get_hidden_size(self.base_layer),
-            r_value=rank,
-            device=self.device,
-            index=mome_index,
-            index_k=mome_index_k,
-        )
+        self.rank = module_mome.rank
+        self.index = module_mome.index
+        self.index_k = module_mome.index_k
+        self.index_dimension = self.index.embedding_dimension
+        query_proj_lora_a = module_mome.query_proj_lora_a
+        query_proj_lora_b = module_mome.query_proj_lora_b
+        value_proj_lora_a = module_mome.value_proj_lora_a
+        value_proj_lora_b = module_mome.value_proj_lora_b
+
+        self.query_proj_lora_a_tensors[index, 
+                                        :query_proj_lora_a.shape[1], 
+                                        :query_proj_lora_a.shape[0]].copy_(query_proj_lora_a.T, non_blocking=True)
+        self.query_proj_lora_b_tensors[index, 
+                                        :query_proj_lora_b.shape[1], 
+                                        :query_proj_lora_b.shape[0]].copy_(query_proj_lora_b.T, non_blocking=True)
+        self.value_proj_lora_a_tensors[index,
+                                        :value_proj_lora_a.shape[1], 
+                                        :value_proj_lora_a.shape[0]].copy_(value_proj_lora_a.T, non_blocking=True)
+        self.value_proj_lora_b_tensors[index,
+                                        :value_proj_lora_b.shape[1], 
+                                        :value_proj_lora_b.shape[0]].copy_(value_proj_lora_b.T, non_blocking=True)
 
     # Call layer with all inputs and kwargs
     def forward(
@@ -221,32 +253,30 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
         hidden_states: torch.Tensor,
         **kwargs,
     ) -> torch.Tensor:
-        # logger.debug(f"hidden states dtype: {hidden_states.dtype}")
-        # if attention_mask is not None:
-        #    logger.debug(f"attention mask dtype: {attention_mask.dtype}")
-
-        # if position_ids is not None:
-        #    logger.debug(f"position ids dtype: {position_ids.dtype}")
-
-        # if past_key_value is not None:
-        #    logger.debug(f"past_key_value dtype: {past_key_value}")
+        logger.info("hidden_states.shape: %s, hidden_states.dtype: %s", hidden_states.shape, hidden_states.dtype)
 
         layer_outputs = self.base_layer(hidden_states=hidden_states, **kwargs)
-        logger.debug("layer_outputs.shape:", layer_outputs.shape)
+        logger.info("base_layer outputs.shape: %s", layer_outputs.shape)
+
         # project the mome attention output to the same size as the transformer attention output
-        mome_attention_output = self.mome_attention_list[0].forward(hidden_states)
-        logger.debug(f"mome_attention_output shape: {mome_attention_output.shape}")
+        mome_attention_output = self.mome_forward(hidden_states)
+        logger.info(f"mome_attention_output shape %s:", mome_attention_output.shape)
         # logger.debug(
         #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
         # )
         # logger.debug(
         #     f"self_attention_output: {self_attention_output} {torch.histogram(self_attention_output, bins=4)}"
         # )
- 
+        if layer_outputs.dtype != mome_attention_output.dtype:
+            assert mome_attention_output.shape[0] == 1
+            mome_attention_output = mome_attention_output.squeeze(0)
+    
         if isinstance(layer_outputs, tuple):
-            return (layer_outputs[0] + mome_attention_output,) + layer_outputs[1:]
+            output = (layer_outputs[0] + mome_attention_output,) + layer_outputs[1:]
         else:
-            return layer_outputs + mome_attention_output
+            output = layer_outputs + mome_attention_output
+        logger.info(f"output shape: {output.shape}")
+        return output
 
     @classmethod
     def can_replace_layer(cls, source_layer: nn.Module,
@@ -254,47 +284,11 @@ class BaseMoMEAttentionLayer(BaseLayerWithMoME):
                           model_config: Optional[PretrainedConfig]) -> bool:
         return type(source_layer) is LlamaAttention    
 
-
-class MoMEAttentionLayer(nn.Module):
-    def __init__(
-        self,
-        hidden_size,
-        r_value,
-        device,
-        index: LaminiIndex,
-        index_k,
-    ):
-        super().__init__()
-        self.index = index
-        self.index_k = index_k
-        self.index_dimension = index.embedding_dimension
-
-        # A linear layer to project the query into the space of the index
-        # device = "cuda"
-        self.query_projection_lora_in = nn.Linear(hidden_size, r_value, bias=False, device=device)
-        self.query_projection_lora_out = nn.Linear(
-            r_value, self.index_dimension, bias=False, device=device
-        )
-
-        # A linear layer to project the value into the space of the original hidden size
-        self.value_projection_lora_in = nn.Linear(
-            self.index_dimension, r_value, bias=False, device=device
-        )
-        self.value_projection_lora_out = nn.Linear(r_value, hidden_size, bias=False, device=device)
-
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        self.value_projection_lora_out.weight.data.zero_()
-        self.query_projection_lora_out.weight.data.zero_()
-
     # Call layer with all inputs and kwargs
-    def forward(
+    def mome_forward(
         self, hidden_states: torch.Tensor,
         **kwargs,
     )-> torch.Tensor:
-        logger.info("hidden_states.shape: %s", hidden_states.shape)
-
         query = self.project_query(hidden_states)
         logger.info("query.shape: %s, query.dtype: %s", query.shape, query.dtype)
 
@@ -303,6 +297,7 @@ class MoMEAttentionLayer(nn.Module):
         logger.info("value.shape: %s, value.dtype: %s", value.shape, value.dtype)
 
         # convert key to the dtype of the query
+        logger.info("start to convert key and value to the original dtype")
         target_dtype = hidden_states.dtype
         query = query.to(target_dtype)
         key = key.to(target_dtype)
@@ -310,28 +305,74 @@ class MoMEAttentionLayer(nn.Module):
         logger.info("query,key,value to original dtype: %s success", target_dtype)
 
         # project the mome attention output to the same size as the transformer attention output
-        mome_attention_output = torch.nn.functional.scaled_dot_product_attention(
-            query=query,
-            key=key,
-            value=value,
-            # attn_mask=attention_mask,
-            dropout_p=0.1,
-            is_causal=True,
-            scale=None,
-        )
-        projected_mome_attention_output = self.project_value(mome_attention_output)
-        return projected_mome_attention_output
+        try:
+            mome_attention_output = F.scaled_dot_product_attention(
+                query=query,
+                key=key,
+                value=value,
+                dropout_p=0.1,
+                is_causal=True,
+                scale=None,
+            )
+        except RuntimeError as e:
+            logger.error("scaled_dot_product_attention failed. " \
+                            "query: %s, key: %s, value: %s", query.shape, key.shape, value.shape)
+            raise e
+
+        output = self.project_value(mome_attention_output)
+        logger.info("project_value success. output dtype: %s ", output.dtype)
+        return output
+
+    def scaled_dot_product_attention_custom(self, query, key, value, attn_mask=None, dropout_p=0.0):
+        """
+        scaled dot product attention。
+        
+        query: [B, S_q, D]
+        key:   [B, S_k, D]
+        value: [B, S_k, D]
+        attn_mask: [B, S_q, S_k] (bool, True 表示 mask 掉)
+        """
+        if query.dim() == 2:
+            query = query.unsqueeze(0)  # [1, S_q, D]
+        if key.dim() == 2:
+            key = key.unsqueeze(0)
+        if value.dim() == 2:
+            value = value.unsqueeze(0)
+
+        B, S_q, D = query.shape
+        S_k = key.shape[1]
+
+        # Step 1: Attention scores = Q x K^T / sqrt(D)
+        scores = torch.matmul(query, key.transpose(-2, -1)) / (D ** 0.5)  # [B, S_q, S_k]
+
+        # Step 2: Apply mask (if any)
+        if attn_mask is not None:
+            # mask: True = mask掉，需要变成 -inf，才能 softmax 成 0
+            scores = scores.masked_fill(attn_mask, float("-inf"))
+
+        # Step 3: Softmax
+        attn_weights = F.softmax(scores, dim=-1)  # [B, S_q, S_k]
+
+        # Step 4: Apply dropout
+        if dropout_p > 0.0:
+            attn_weights = F.dropout(attn_weights, p=dropout_p)
+
+        # Step 5: Attention output = weights x V
+        output = torch.matmul(attn_weights, value)  # [B, S_q, D]
+
+        return output
 
     def project_value(self, value):
-        value = self.value_projection_lora_in(value)
-        value = self.value_projection_lora_out(value)
+        original_dtype = value.dtype
+        value = F.linear(value, self.value_proj_lora_a_tensors[0], bias=None)
+        value = F.linear(value, self.value_proj_lora_b_tensors[0], bias=None)
+        value = value.to(original_dtype)
         return value
 
     def project_query(self, hidden_states):
         original_dtype = hidden_states.dtype
-        # assign into the mome embedding space
-        query = self.query_projection_lora_in(hidden_states)
-        query = self.query_projection_lora_out(query)
+        query = F.linear(hidden_states, self.query_proj_lora_a_tensors[0], bias=None)
+        query = F.linear(query, self.query_proj_lora_b_tensors[0], bias=None)
         query = query.to(original_dtype)
         return query
 
@@ -441,7 +482,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     def set_mome(
         self,
         index: int,
-        module_mome: MoMEAttentionLayer,
+        module_mome: MoMELayerWeights,
     ):
         assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         lora_a = module_mome.lora_a

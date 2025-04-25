@@ -176,30 +176,30 @@ class MoMEModel(AdapterModel):
                     momes[module_name].index_k = config_content["index_k"]
                 if is_mome_attention_query_proj:
                     if is_lora_a:
-                        momes[module_name].query_projection_lora_a = tensor.to(device=device,
+                        momes[module_name].query_proj_lora_a = tensor.to(device=device,
                                                             dtype=dtype).t()
                         if pin_memory:
-                            momes[module_name].query_projection_lora_a = momes[
-                                module_name].query_projection_lora_a.pin_memory()
+                            momes[module_name].query_proj_lora_a = momes[
+                                module_name].query_proj_lora_a.pin_memory()
                     else:
-                        momes[module_name].query_projection_lora_b = tensor.to(device=device,
+                        momes[module_name].query_proj_lora_b = tensor.to(device=device,
                                                             dtype=dtype).t()
                         if pin_memory:
-                            momes[module_name].query_projection_lora_b = momes[
-                                module_name].query_projection_lora_b.pin_memory()
+                            momes[module_name].query_proj_lora_b = momes[
+                                module_name].query_proj_lora_b.pin_memory()
                 elif is_mome_attention_value_proj:
                     if is_lora_a:
-                        momes[module_name].value_projection_lora_a = tensor.to(device=device,
+                        momes[module_name].value_proj_lora_a = tensor.to(device=device,
                                                             dtype=dtype).t()
                         if pin_memory:
-                            momes[module_name].value_projection_lora_a = momes[
-                                module_name].value_projection_lora_a.pin_memory()
+                            momes[module_name].value_proj_lora_a = momes[
+                                module_name].value_proj_lora_a.pin_memory()
                     else:
-                        momes[module_name].value_projection_lora_b = tensor.to(device=device,
+                        momes[module_name].value_proj_lora_b = tensor.to(device=device,
                                                             dtype=dtype).t()
                         if pin_memory:
-                            momes[module_name].value_projection_lora_b = momes[
-                                module_name].value_projection_lora_b.pin_memory()
+                            momes[module_name].value_proj_lora_b = momes[
+                                module_name].value_proj_lora_b.pin_memory()
             # set the mlp or lm_head tensors
             else:
                 if is_lora_a:

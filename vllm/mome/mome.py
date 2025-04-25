@@ -19,10 +19,10 @@ class MoMELayerWeights:
         rank: int,
         lora_a: torch.Tensor = None,
         lora_b: torch.Tensor = None,
-        query_projection_lora_a: torch.Tensor = None,
-        query_projection_lora_b: torch.Tensor = None,
-        value_projection_lora_a: torch.Tensor = None,
-        value_projection_lora_b: torch.Tensor = None,
+        query_proj_lora_a: torch.Tensor = None,
+        query_proj_lora_b: torch.Tensor = None,
+        value_proj_lora_a: torch.Tensor = None,
+        value_proj_lora_b: torch.Tensor = None,
         index: LaminiIndex = None,
         index_k: int = None,
     ) -> None:
@@ -34,10 +34,10 @@ class MoMELayerWeights:
         self.lora_b = lora_b
         
         # MoME Attention have two lora and index
-        self.query_projection_lora_a = query_projection_lora_a
-        self.query_projection_lora_b = query_projection_lora_b
-        self.value_projection_lora_a = value_projection_lora_a
-        self.value_projection_lora_b = value_projection_lora_b
+        self.query_proj_lora_a = query_proj_lora_a
+        self.query_proj_lora_b = query_proj_lora_b
+        self.value_proj_lora_a = value_proj_lora_a
+        self.value_proj_lora_b = value_proj_lora_b
         self.index = index
         self.index_k = index_k
 
