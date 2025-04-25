@@ -1529,7 +1529,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             raise RuntimeError("MoME is not enabled.")
         self.mome_manager.remove_all_adapters()
 
-    def set_active_momes(self, mome_requests: Set[LoRARequest],
+    def set_active_momes(self, mome_requests: Set[MoMERequest],
                          mome_mapping: LoRAMapping) -> None:
         if not self.mome_manager:
             raise RuntimeError("MoME is not enabled.")

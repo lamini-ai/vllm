@@ -405,9 +405,6 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.mlp_lora_in = None
-        self.mlp_lora_out = None
-
     def create_mome_weights(
         self,
         max_loras: int,
@@ -416,61 +413,51 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        # lora_a_out_size = mome_config.max_mome_rank
-        # lora_b_out_size = self.hidden_size
-        # self.lora_a_tensors = torch.zeros(
-        #     (                
-        #         max_loras,
-        #         lora_a_out_size,
-        #         lora_b_out_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
-        # self.lora_b_tensors = torch.zeros(
-        #     (
-        #         max_loras,
-        #         lora_b_out_size,
-        #         lora_a_out_size,
-        #     ),
-        #     dtype=mome_config.mome_dtype,
-        #     device=self.device,
-        # )
-
-        self.mlp_lora_in = [None for _ in range(max_loras)]
-        self.mlp_lora_out = [None for _ in range(max_loras)]
+        lora_a_out_size = mome_config.max_mome_rank
+        lora_b_out_size = self.hidden_size
+        self.lora_a_tensors = torch.zeros(
+            (                
+                max_loras,
+                lora_a_out_size,
+                lora_b_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
+        self.lora_b_tensors = torch.zeros(
+            (
+                max_loras,
+                lora_b_out_size,
+                lora_a_out_size,
+            ),
+            dtype=mome_config.mome_dtype,
+            device=self.device,
+        )
 
     def reset_mome(self, index: int):
-        # self.lora_a_tensors[index] = 0
-        # self.lora_b_tensors[index] = 0
-        self.mlp_lora_in[index] = None
-        self.mlp_lora_out[index] = None
+        self.lora_a_tensors[index] = 0
+        self.lora_b_tensors[index] = 0
 
     def set_mome(
         self,
         index: int,
         module_mome: MoMEAttentionLayer,
     ):
-        rank = module_mome.rank
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         lora_a = module_mome.lora_a
         lora_b = module_mome.lora_b
-        # assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
-        # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
-        #                            lora_a.T, non_blocking=True)
-        # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
-        #                            lora_b.T, non_blocking=True)
-        self.mlp_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False, device=self.device)
-        self.mlp_lora_in[index].weight.data = lora_a
-        self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False, device=self.device)
-        self.mlp_lora_out[index].weight.data = lora_b
+        self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
+                                   lora_a.T, non_blocking=True)
+        self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
+                                   lora_b.T, non_blocking=True)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
-        logger.debug(f"original mlp output shape: {output.shape}")
-        mome_in_results = self.mlp_lora_in[0](hidden_states)
-        mome_out_results = self.mlp_lora_out[0](mome_in_results)
-        logger.debug(f"mome mlp output shape: {mome_out_results.shape}")
+        logger.info("original mlp output shape %s:", output.shape)
+        mome_in_results = F.linear(hidden_states, self.lora_a_tensors[0], bias=None)
+        mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[0], bias=None)
+        logger.info("mome mlp output shape: %s:", mome_out_results.shape)
         return output + mome_out_results
 
     @classmethod
