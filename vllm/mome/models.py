@@ -249,9 +249,9 @@ class MoMEModel(AdapterModel):
             tensors: Dict[str, torch.Tensor] = {}
             unexpected_modules = []
             with safetensors.safe_open(mome_tensor_path,
-                                       framework="pt") as f:  # type: ignore
+                                        framework="pt") as f:  # type: ignore
                 for mome_module in f.keys():  # noqa
-                    module_name, _, _, _, _ = parse_fine_tuned_mome_name(mome_module)
+                    module_name, _, _, _, _, _, _ = parse_fine_tuned_mome_name(mome_module)
                     part_name = module_name.split(".")[-1]
                     # here part_name should be one of ["mome_attention", "mlp", "lm_head"]
                     if part_name not in expected_mome_modules:
@@ -355,9 +355,7 @@ class MoMEModelManager(AdapterModelManager):
         for module_name, module in self.modules.items():
             module_mome = mome_model.get_mome(module_name)
             if module_mome:
-                module.set_mome(index, module_mome.lora_a,
-                                 module_mome.lora_b, module_mome.rank,
-                                 module_mome.index, module_mome.index_k)
+                module.set_mome(index, module_mome)
             else:
                 module.reset_mome(index)
         return True

@@ -408,9 +408,6 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         self.mlp_lora_in = None
         self.mlp_lora_out = None
 
-    def _reset_parameters(self, index):
-        self.mlp_lora_out[index].weight.data.zero_()
-
     def create_mome_weights(
         self,
         max_loras: int,
@@ -419,26 +416,26 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
-        lora_a_out_size = mome_config.max_mome_rank
-        lora_b_out_size = self.hidden_size
-        self.lora_a_tensors = torch.zeros(
-            (                
-                max_loras,
-                lora_a_out_size,
-                lora_b_out_size,
-            ),
-            dtype=mome_config.mome_dtype,
-            device=self.device,
-        )
-        self.lora_b_tensors = torch.zeros(
-            (
-                max_loras,
-                lora_b_out_size,
-                lora_a_out_size,
-            ),
-            dtype=mome_config.mome_dtype,
-            device=self.device,
-        )
+        # lora_a_out_size = mome_config.max_mome_rank
+        # lora_b_out_size = self.hidden_size
+        # self.lora_a_tensors = torch.zeros(
+        #     (                
+        #         max_loras,
+        #         lora_a_out_size,
+        #         lora_b_out_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
+        # self.lora_b_tensors = torch.zeros(
+        #     (
+        #         max_loras,
+        #         lora_b_out_size,
+        #         lora_a_out_size,
+        #     ),
+        #     dtype=mome_config.mome_dtype,
+        #     device=self.device,
+        # )
 
         self.mlp_lora_in = [None for _ in range(max_loras)]
         self.mlp_lora_out = [None for _ in range(max_loras)]
@@ -452,12 +449,11 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
     def set_mome(
         self,
         index: int,
-        lora_a: torch.Tensor,
-        lora_b: torch.Tensor,
-        rank: int,
-        mome_index: LaminiIndex,
-        mome_index_k: int,
+        module_mome: MoMEAttentionLayer,
     ):
+        rank = module_mome.rank
+        lora_a = module_mome.lora_a
+        lora_b = module_mome.lora_b
         # assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
         # self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
@@ -465,8 +461,9 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         # self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
         #                            lora_b.T, non_blocking=True)
         self.mlp_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False, device=self.device)
+        self.mlp_lora_in[index].weight.data = lora_a
         self.mlp_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False, device=self.device)
-        self._reset_parameters(index)
+        self.mlp_lora_out[index].weight.data = lora_b
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
