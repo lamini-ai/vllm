@@ -17,27 +17,37 @@ class MoMELayerWeights:
         self,
         module_name: str,
         rank: int,
-        lora_a: torch.Tensor,
-        lora_b: torch.Tensor,
+        lora_a: torch.Tensor = None,
+        lora_b: torch.Tensor = None,
+        query_projection_lora_a: torch.Tensor = None,
+        query_projection_lora_b: torch.Tensor = None,
+        value_projection_lora_a: torch.Tensor = None,
+        value_projection_lora_b: torch.Tensor = None,
         index: LaminiIndex = None,
         index_k: int = None,
     ) -> None:
         self.module_name = module_name
         self.rank = rank
+
+        # mlp or lm_head LoRA use lora_a and lora_b
         self.lora_a = lora_a
         self.lora_b = lora_b
         
-        # for MoME Attention
+        # MoME Attention have two lora and index
+        self.query_projection_lora_a = query_projection_lora_a
+        self.query_projection_lora_b = query_projection_lora_b
+        self.value_projection_lora_a = value_projection_lora_a
+        self.value_projection_lora_b = value_projection_lora_b
         self.index = index
         self.index_k = index_k
 
     @property
     def input_dim(self) -> int:
-        return self.lora_a.shape[0]
+        raise NotImplementedError()
 
     @property
     def output_dim(self) -> int:
-        return self.lora_b.shape[1]
+        raise NotImplementedError()
 
     @property
     def is_packed(self) -> bool:
@@ -50,7 +60,7 @@ class MoMELayerWeights:
         rank: int,
     ) -> "LoRALayerWeights":
         
-        return cls(module_name, rank, None, None, None, None)
+        return cls(module_name, rank, None, None, None, None, None, None, None, None)
 
     @classmethod
     def create_dummy_mome_weights(

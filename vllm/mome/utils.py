@@ -64,7 +64,7 @@ def replace_submodule(model: nn.Module, module_name: str,
 def parse_fine_tuned_mome_name(
         name: str,
         weights_mapper: Optional[WeightsMapper] = None
-) -> Tuple[str, bool, bool]:
+) -> Tuple[str, bool, bool, bool, bool, bool, bool]:
     """Parse the name of mome weights.
 
     args:
@@ -82,19 +82,29 @@ def parse_fine_tuned_mome_name(
     """
 
     parts = name.split(".")
+
     is_mome_attention = False
+    is_mome_attention_query_proj = False # for mome_attention queue projection
+    is_mome_attention_value_proj = False # for mome_attention value projection
+
     is_mlp_lora = False
     is_head_lora = False
 
     if parts[-1] == "weight":
         if parts[-3] == "mome_attention":
             is_mome_attention = True
+            if "query_projection" in parts[-2]:
+                is_mome_attention_query_proj = True
+            elif "value_projection" in parts[-2]:
+                is_mome_attention_value_proj = True
+            else:
+                raise ValueError(f"{name} is unsupported MoME weight")
         elif parts[-3] == "mlp":
             is_mlp_lora = True
         elif parts[-3] == "lm_head":
             is_head_lora = True
         new_name = ".".join(parts[1:-2])
-        return new_name, "in" in parts[-2], is_mome_attention, is_mlp_lora, is_head_lora
+        return new_name, "in" in parts[-2], is_mome_attention, is_mlp_lora, is_head_lora, is_mome_attention_query_proj, is_mome_attention_value_proj
 
     raise ValueError(f"{name} is unsupported MoME weight")
 

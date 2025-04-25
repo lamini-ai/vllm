@@ -162,25 +162,58 @@ class MoMEModel(AdapterModel):
         pin_memory = str(device) == "cpu" and is_pin_memory_available()
         momes: Dict[str, MoMELayerWeights] = {}
         for tensor_name, tensor in tensors.items():
-            module_name, is_lora_a, is_mome_attention, _, _ = parse_fine_tuned_mome_name(
-                tensor_name)
+            (module_name, is_lora_a, is_mome_attention, _, _, 
+             is_mome_attention_query_proj, is_mome_attention_value_proj) = parse_fine_tuned_mome_name(tensor_name)
+            
+            # initialize MoMELayerWeights object and store in momes dict
             if module_name not in momes:
                 momes[module_name] = MoMELayerWeights.from_config(
                     module_name, config_content["r_value"])
-
+            # set the mome_attention tensors
             if is_mome_attention:
-                momes[module_name].index = mome_index
-                momes[module_name].index_k = config_content["index_k"]
-
-            if is_lora_a:
-                momes[module_name].lora_a = tensor.to(device=device,
-                                                      dtype=dtype).t()
-                if pin_memory:
-                    momes[module_name].lora_a = momes[
-                        module_name].lora_a.pin_memory()
+                if momes[module_name].index is None:
+                    momes[module_name].index = mome_index
+                    momes[module_name].index_k = config_content["index_k"]
+                if is_mome_attention_query_proj:
+                    if is_lora_a:
+                        momes[module_name].query_projection_lora_a = tensor.to(device=device,
+                                                            dtype=dtype).t()
+                        if pin_memory:
+                            momes[module_name].query_projection_lora_a = momes[
+                                module_name].query_projection_lora_a.pin_memory()
+                    else:
+                        momes[module_name].query_projection_lora_b = tensor.to(device=device,
+                                                            dtype=dtype).t()
+                        if pin_memory:
+                            momes[module_name].query_projection_lora_b = momes[
+                                module_name].query_projection_lora_b.pin_memory()
+                elif is_mome_attention_value_proj:
+                    if is_lora_a:
+                        momes[module_name].value_projection_lora_a = tensor.to(device=device,
+                                                            dtype=dtype).t()
+                        if pin_memory:
+                            momes[module_name].value_projection_lora_a = momes[
+                                module_name].value_projection_lora_a.pin_memory()
+                    else:
+                        momes[module_name].value_projection_lora_b = tensor.to(device=device,
+                                                            dtype=dtype).t()
+                        if pin_memory:
+                            momes[module_name].value_projection_lora_b = momes[
+                                module_name].value_projection_lora_b.pin_memory()
+            # set the mlp or lm_head tensors
             else:
-                momes[module_name].lora_b = tensor.to(device=device,
-                                                      dtype=dtype).t()
+                if is_lora_a:
+                    momes[module_name].lora_a = tensor.to(device=device,
+                                                        dtype=dtype).t()
+                    if pin_memory:
+                        momes[module_name].lora_a = momes[
+                            module_name].lora_a.pin_memory()
+                else:
+                    momes[module_name].lora_b = tensor.to(device=device,
+                                                        dtype=dtype).t()
+                    if pin_memory:
+                        momes[module_name].lora_b = momes[
+                            module_name].lora_b.pin_memory()
 
         return cls(mome_model_id, config_content["r_value"], momes)
 
