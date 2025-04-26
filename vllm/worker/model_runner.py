@@ -72,6 +72,7 @@ logger = init_logger(__name__)
 LORA_WARMUP_RANK = 8
 
 MOME_WARMUP_RANK = 32
+MOME_WARMUP_INDEX_DIM = 384
 
 _NUM_WARMUP_ITERS = 2
 
@@ -1395,7 +1396,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                             mome_path="/not/a/real/path",
                         )
                         self.mome_manager.add_dummy_mome(dummy_mome_request,
-                                                         rank=MOME_WARMUP_RANK)
+                                                         rank=MOME_WARMUP_RANK,
+                                                         index_dim=MOME_WARMUP_INDEX_DIM)
                         dummy_mome_requests.append(dummy_mome_request)
                     dummy_mome_requests_per_seq = [
                         dummy_mome_requests[idx % len(dummy_mome_requests)]

@@ -270,11 +270,8 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         if layer_outputs.dtype != mome_attention_output.dtype:
             assert mome_attention_output.shape[0] == 1
             mome_attention_output = mome_attention_output.squeeze(0)
-    
-        if isinstance(layer_outputs, tuple):
-            output = (layer_outputs[0] + mome_attention_output,) + layer_outputs[1:]
-        else:
-            output = layer_outputs + mome_attention_output
+
+        output = layer_outputs + mome_attention_output
         logger.info(f"output shape: {output.shape}")
         return output
 

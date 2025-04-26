@@ -441,19 +441,20 @@ class MoMEModelManager(AdapterModelManager):
     def create_dummy_mome(
             self,
             mome_id: int,
-            rank: int) -> MoMEModel:
+            rank: int,
+            index_dim: int) -> MoMEModel:
         """Create zero-initialized LoRAModel for warmup."""
         model = MoMEModel(mome_id, rank, {})
         for module_name, module in self.model.named_modules():
             if (not self._match_target_modules(module_name)
                     or not isinstance(module, BaseLayerWithMoME)):
                 continue
-            # parts = module_name.split(".")
             mome = MoMELayerWeights.create_dummy_mome_weights(
                 module_name,
                 module.lora_a_tensors[0].shape[-1],
                 module.lora_b_tensors[0].shape[-2],
                 rank,
+                index_dim,
                 module.lora_a_tensors[0].dtype,
                 "cpu",
             )

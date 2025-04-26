@@ -69,26 +69,54 @@ class MoMELayerWeights:
             input_dim: int,
             output_dim: int,
             rank: int,
+            index_dim: int,
             dtype: torch.dtype,
-            device: torch.types.Device,
-            index: LaminiIndex = None,
-            index_k: int = None) -> "LoRALayerWeights":
+            device: torch.types.Device) -> "LoRALayerWeights":
         pin_memory = str(device) == "cpu" and is_pin_memory_available()
-        lora_a = torch.zeros([input_dim, rank],
-                             dtype=dtype,
-                             device=device,
-                             pin_memory=pin_memory)
-        lora_b = torch.zeros([rank, output_dim],
-                             dtype=dtype,
-                             device=device,
-                             pin_memory=pin_memory)
+
+        if index_dim is not None:
+            lora_a = None
+            lora_b = None
+            query_proj_lora_a = torch.zeros([input_dim, rank],
+                                            dtype=dtype,
+                                            device=device,
+                                            pin_memory=pin_memory)
+            query_proj_lora_b = torch.zeros([rank, index_dim],
+                                            dtype=dtype,
+                                            device=device,
+                                            pin_memory=pin_memory)
+            value_proj_lora_a = torch.zeros([input_dim, rank],
+                                            dtype=dtype,
+                                            device=device,
+                                            pin_memory=pin_memory)
+            value_proj_lora_b = torch.zeros([rank, output_dim],
+                                            dtype=dtype,
+                                            device=device,
+                                            pin_memory=pin_memory)
+        else:
+            lora_a = torch.zeros([input_dim, rank],
+                                dtype=dtype,
+                                device=device,
+                                pin_memory=pin_memory)
+            lora_b = torch.zeros([rank, output_dim],
+                                dtype=dtype,
+                                device=device,
+                                pin_memory=pin_memory)
+            query_proj_lora_a = None
+            query_proj_lora_b = None
+            value_proj_lora_a = None
+            value_proj_lora_b = None
 
         return cls(
             module_name,
             rank=rank,
             lora_a=lora_a,
             lora_b=lora_b,
-            index=index,
-            index_k=index_k,
+            query_proj_lora_a=query_proj_lora_a,
+            query_proj_lora_b=query_proj_lora_b,
+            value_proj_lora_a=value_proj_lora_a,
+            value_proj_lora_b=value_proj_lora_b,
+            index=None,
+            index_k=None,
         )
 
