@@ -101,7 +101,7 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
         return mome
 
-    def add_dummy_mome(self, mome_request: MoMERequest, rank: int) -> bool:
+    def add_dummy_mome(self, mome_request: MoMERequest, rank: int, index_dim: int) -> bool:
         if mome_request.mome_int_id in self.list_adapters():
             return False
         if isinstance(self._cached_dummy_mome, MoMEModel):
@@ -109,7 +109,7 @@ class WorkerMoMEManager(AbstractWorkerManager):
                 mome_request.mome_int_id)
         else:
             dummy_mome = self._adapter_manager.create_dummy_mome(
-                mome_request.mome_int_id, rank)
+                mome_request.mome_int_id, rank, index_dim)
             if self._cached_dummy_mome is None:
                 self._cached_dummy_mome = dummy_mome
         return self._adapter_manager.add_adapter(dummy_mome)
