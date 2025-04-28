@@ -74,7 +74,7 @@ class MoMELayerWeights:
             device: torch.types.Device) -> "LoRALayerWeights":
         pin_memory = str(device) == "cpu" and is_pin_memory_available()
 
-        if index_dim is not None:
+        if "self_attn" in module_name:
             lora_a = None
             lora_b = None
             query_proj_lora_a = torch.zeros([input_dim, rank],
@@ -85,7 +85,7 @@ class MoMELayerWeights:
                                             dtype=dtype,
                                             device=device,
                                             pin_memory=pin_memory)
-            value_proj_lora_a = torch.zeros([input_dim, rank],
+            value_proj_lora_a = torch.zeros([index_dim, rank],
                                             dtype=dtype,
                                             device=device,
                                             pin_memory=pin_memory)

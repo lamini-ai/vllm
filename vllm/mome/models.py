@@ -449,13 +449,21 @@ class MoMEModelManager(AdapterModelManager):
             if (not self._match_target_modules(module_name)
                     or not isinstance(module, BaseLayerWithMoME)):
                 continue
+            if "self_attn" in module_name:
+                input_dim = module.query_proj_lora_a[0].shape[-1]
+                output_dim = module.value_proj_lora_b[0].shape[-2]
+                weight_dtype = module.query_proj_lora_a[0].dtype
+            else:
+                input_dim = module.lora_a_tensors[0].shape[-1]
+                output_dim = module.lora_b_tensors[0].shape[-2]
+                weight_dtype = module.lora_a_tensors[0].dtype
             mome = MoMELayerWeights.create_dummy_mome_weights(
                 module_name,
-                module.lora_a_tensors[0].shape[-1],
-                module.lora_b_tensors[0].shape[-2],
+                input_dim,
+                output_dim,
                 rank,
                 index_dim,
-                module.lora_a_tensors[0].dtype,
+                weight_dtype,
                 "cpu",
             )
             model.momes[module_name] = mome

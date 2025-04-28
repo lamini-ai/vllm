@@ -170,7 +170,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         lora_b_out_size = self.hidden_size
 
         self.query_proj_lora_a_tensors = torch.zeros(
-            (                
+            (
                 max_loras,
                 lora_a_out_size,
                 lora_b_out_size,
@@ -183,6 +183,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
                 max_loras,
                 lora_b_out_size,
                 index_dimension,
+                lora_a_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
@@ -190,8 +191,8 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         self.value_proj_lora_a_tensors = torch.zeros(
             (
                 max_loras,
-                index_dimension,
                 lora_a_out_size,
+                index_dimension,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
@@ -199,8 +200,8 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         self.value_proj_lora_b_tensors = torch.zeros(
             (
                 max_loras,
-                lora_a_out_size,
                 lora_b_out_size,
+                lora_a_out_size,
             ),
             dtype=mome_config.mome_dtype,
             device=self.device,
@@ -267,7 +268,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         # logger.debug(
         #     f"self_attention_output: {self_attention_output} {torch.histogram(self_attention_output, bins=4)}"
         # )
-        if layer_outputs.dtype != mome_attention_output.dtype:
+        if layer_outputs.shape != mome_attention_output.shape:
             assert mome_attention_output.shape[0] == 1
             mome_attention_output = mome_attention_output.squeeze(0)
 
@@ -279,7 +280,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
     def can_replace_layer(cls, source_layer: nn.Module,
                           mome_config: MoMEConfig, packed_modules_list: List,
                           model_config: Optional[PretrainedConfig]) -> bool:
-        return type(source_layer) is LlamaAttention    
+        return type(source_layer) is LlamaAttention
 
     # Call layer with all inputs and kwargs
     def mome_forward(
@@ -320,45 +321,6 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         logger.info("project_value success. output dtype: %s ", output.dtype)
         return output
 
-    def scaled_dot_product_attention_custom(self, query, key, value, attn_mask=None, dropout_p=0.0):
-        """
-        scaled dot product attention。
-        
-        query: [B, S_q, D]
-        key:   [B, S_k, D]
-        value: [B, S_k, D]
-        attn_mask: [B, S_q, S_k] (bool, True 表示 mask 掉)
-        """
-        if query.dim() == 2:
-            query = query.unsqueeze(0)  # [1, S_q, D]
-        if key.dim() == 2:
-            key = key.unsqueeze(0)
-        if value.dim() == 2:
-            value = value.unsqueeze(0)
-
-        B, S_q, D = query.shape
-        S_k = key.shape[1]
-
-        # Step 1: Attention scores = Q x K^T / sqrt(D)
-        scores = torch.matmul(query, key.transpose(-2, -1)) / (D ** 0.5)  # [B, S_q, S_k]
-
-        # Step 2: Apply mask (if any)
-        if attn_mask is not None:
-            # mask: True = mask掉，需要变成 -inf，才能 softmax 成 0
-            scores = scores.masked_fill(attn_mask, float("-inf"))
-
-        # Step 3: Softmax
-        attn_weights = F.softmax(scores, dim=-1)  # [B, S_q, S_k]
-
-        # Step 4: Apply dropout
-        if dropout_p > 0.0:
-            attn_weights = F.dropout(attn_weights, p=dropout_p)
-
-        # Step 5: Attention output = weights x V
-        output = torch.matmul(attn_weights, value)  # [B, S_q, D]
-
-        return output
-
     def project_value(self, value):
         original_dtype = value.dtype
         value = F.linear(value, self.value_proj_lora_a_tensors[0], bias=None)
@@ -378,9 +340,6 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         return key, value
 
     def get_key_and_value_from_index(self, query):
-        # logger.debug("query size: %s", query.shape)
-        # logger.debug("query.shape[0]: ", query.shape[0])
-        # logger.debug("query.shape[1]: ", query.shape[1])
         if query.dim() == 2:
             batch_size = 1
             sequence_length = query.shape[0]
@@ -454,7 +413,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         lora_a_out_size = mome_config.max_mome_rank
         lora_b_out_size = self.hidden_size
         self.lora_a_tensors = torch.zeros(
-            (                
+            (
                 max_loras,
                 lora_a_out_size,
                 lora_b_out_size,
@@ -484,6 +443,7 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         lora_a = module_mome.lora_a
         lora_b = module_mome.lora_b
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
         self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
                                    lora_a.T, non_blocking=True)
@@ -534,11 +494,11 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
     @property
     def weight(self):
         return self.base_layer.weight
-    
+
     @property
     def bias(self):
         return self.base_layer.bias
-    
+
     def create_mome_weights(
         self,
         max_loras: int,
@@ -550,7 +510,7 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         lora_a_out_size = mome_config.max_mome_rank
         lora_b_out_size = self.hidden_size
         self.lora_a_tensors = torch.zeros(
-            (                
+            (
                 max_loras,
                 lora_a_out_size,
                 lora_b_out_size,
