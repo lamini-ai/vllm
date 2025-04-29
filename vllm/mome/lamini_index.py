@@ -1,38 +1,37 @@
+import os
 import json
 import logging
-import os
-from typing import Iterator, TypeVar, Union
-
-import faiss
 import numpy as np
 import torch
+# import faiss
 
-from tqdm import tqdm
+from vllm.logger import init_logger
 
-from vllm.mome.model_definition.embedding import get_embedding_model,
-from vllm.mome.model_definition.constants import SENTENCE_TRANSFORMER_DIM
-
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 
 class LaminiIndex:
     def __init__(
         self,
-        cache_dir,
+        cache_dir: str,
         dataset=None,
-        clamp_max_embedding_dimension=SENTENCE_TRANSFORMER_DIM,
     ):
+        self.cache_dir = cache_dir
         self.dataset = dataset
+        self.index = None
+        self.splits = None
+        self.keys = None
+        self.values = None
         self.embedding_dimension = None
 
     @staticmethod
     def load_index(path, values_path, cache_dir):
+        lamini_index = LaminiIndex(cache_dir)
+
+        '''
         faiss_path = os.path.join(path, "index.faiss")
         splits_path = os.path.join(path, "splits.json")
         config_path = os.path.join(path, "index_config.json")
-
-        lamini_index = LaminiIndex(cache_dir)
-
         with open(config_path, "r") as f:
             config = json.load(f)
             lamini_index.embedding_dimension = config["embedding_dimension"]
@@ -43,6 +42,7 @@ class LaminiIndex:
         # Load splits
         with open(splits_path, "r") as f:
             lamini_index.splits = json.load(f)
+        '''
 
         # Load keys
         keys_path_json = os.path.join(path, "keys.json")
@@ -68,7 +68,7 @@ class LaminiIndex:
 
         return lamini_index
     
-    def get_key_and_value(self, query_embeddings: torch.Tensor, k: int):
+    def get_key_and_value(self, query_embeddings: torch.Tensor, k: int) -> tuple:
         # logger.debug(f"query_embeddings shape: {query_embeddings.shape}")
         device = query_embeddings.device
         dtype = query_embeddings.dtype
