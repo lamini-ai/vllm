@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 from typing import List, Optional, Dict, Union
 from typing import Sequence as GenericSequence
 
@@ -93,6 +91,8 @@ class MoMELayerWeights:
                                             dtype=dtype,
                                             device=device,
                                             pin_memory=pin_memory)
+            index = LaminiIndex.dummy_index(input_dim, index_dim, device)
+            index_k = 2
         else:
             lora_a = torch.zeros([input_dim, rank],
                                 dtype=dtype,
@@ -106,6 +106,8 @@ class MoMELayerWeights:
             query_proj_lora_b = None
             value_proj_lora_a = None
             value_proj_lora_b = None
+            index = None
+            index_k = None
 
         return cls(
             module_name,
@@ -116,7 +118,7 @@ class MoMELayerWeights:
             query_proj_lora_b=query_proj_lora_b,
             value_proj_lora_a=value_proj_lora_a,
             value_proj_lora_b=value_proj_lora_b,
-            index=None,
-            index_k=None,
+            index=index,
+            index_k=index_k,
         )
 

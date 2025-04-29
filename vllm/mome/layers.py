@@ -256,23 +256,18 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         logger.info("hidden_states.shape: %s, hidden_states.dtype: %s", hidden_states.shape, hidden_states.dtype)
 
         layer_outputs = self.base_layer(hidden_states=hidden_states, **kwargs)
-        logger.debug("base_layer outputs.shape: %s", layer_outputs.shape)
+        logger.debug("self.attn base_layer outputs.shape: %s", layer_outputs.shape)
 
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = self.mome_forward(hidden_states)
-        logger.debug(f"mome_attention_output shape %s:", mome_attention_output.shape)
-        # logger.debug(
-        #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
-        # )
-        # logger.debug(
-        #     f"self_attention_output: {self_attention_output} {torch.histogram(self_attention_output, bins=4)}"
-        # )
+        logger.debug("mome_attention output shape: %s", mome_attention_output.shape)
+        
         if layer_outputs.shape != mome_attention_output.shape:
             assert mome_attention_output.shape[0] == 1
             mome_attention_output = mome_attention_output.squeeze(0)
 
         output = layer_outputs + mome_attention_output
-        logger.info(f"output shape: {output.shape}")
+        logger.debug(f"output shape: {output.shape}")
         return output
 
     @classmethod
@@ -287,11 +282,11 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         **kwargs,
     )-> torch.Tensor:
         query = self.project_query(hidden_states)
-        logger.info("query.shape: %s, query.dtype: %s", query.shape, query.dtype)
+        logger.debug("query.shape: %s, query.dtype: %s", query.shape, query.dtype)
 
         key, value = self.get_key_and_value(query)
-        logger.info("key.shape: %s, key.dtype: %s", key.shape, key.dtype)
-        logger.info("value.shape: %s, value.dtype: %s", value.shape, value.dtype)
+        logger.debug("key.shape: %s, key.dtype: %s", key.shape, key.dtype)
+        logger.debug("value.shape: %s, value.dtype: %s", value.shape, value.dtype)
 
         # project the mome attention output to the same size as the transformer attention output
         try:
@@ -409,10 +404,10 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         output = self.base_layer(hidden_states)
-        logger.info("original mlp output shape %s:", output.shape)
+        logger.debug("mlp base_layer outputs.shape: %s", output.shape)
         mome_in_results = F.linear(hidden_states, self.lora_a_tensors[0], bias=None)
         mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[0], bias=None)
-        logger.info("mome mlp output shape: %s:", mome_out_results.shape)
+        logger.debug("mome mlp output shape: %s:", mome_out_results.shape)
         return output + mome_out_results
 
     @classmethod

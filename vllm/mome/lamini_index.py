@@ -91,3 +91,16 @@ class LaminiIndex:
         # logger.debug(f"selected_values shape: dtype: ", selected_values.shape, selected_values.dtype)
 
         return selected_keys.to(device=device, dtype=dtype), selected_values.to(device=device, dtype=dtype), topk_indices
+
+
+    @staticmethod
+    def dummy_index(embedding_dimension: int, device: str = "cuda", num_entries: int = 1024) -> "LaminiIndex":
+        """Create a dummy index with random keys and values for testing."""
+        lamini_index = LaminiIndex(device)
+        lamini_index.embedding_dimension = embedding_dimension
+
+        # keys: [num_entries, embedding_dim]
+        lamini_index.keys = torch.randn(num_entries, embedding_dimension, dtype=torch.float32, device=device)
+        lamini_index.values = torch.randn(num_entries, embedding_dimension, dtype=torch.float32, device=device)
+
+        return lamini_index
