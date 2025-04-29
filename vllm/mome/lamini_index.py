@@ -13,7 +13,9 @@ logger = init_logger(__name__)
 class LaminiIndex:
     def __init__(
         self,
+        device: str,
     ):
+        self.device = device
         self.index = None
         self.splits = None
         self.keys = None
@@ -22,7 +24,7 @@ class LaminiIndex:
 
     @staticmethod
     def load_index(key_path: str, values_path: str, device: str = "cuda") -> "LaminiIndex":
-        lamini_index = LaminiIndex()
+        lamini_index = LaminiIndex(device)
 
         '''
         faiss_path = os.path.join(path, "index.faiss")
@@ -45,7 +47,7 @@ class LaminiIndex:
         keys_path_npy = os.path.join(key_path, "keys.npy")
         if os.path.exists(keys_path_json):
             with open(keys_path_json, "r") as f:
-                lamini_index.keys = torch.tensor(json.load(f), dtype=torch.float32, device=device)
+                lamini_index.keys = torch.tensor(json.load(f), dtype=torch.float32)
         elif os.path.exists(keys_path_npy):
             lamini_index.keys = torch.from_numpy(np.load(keys_path_npy)).float()
         else:
@@ -56,11 +58,14 @@ class LaminiIndex:
         values_path_npy = os.path.join(values_path, "values.npy")
         if os.path.exists(values_path_json):
             with open(values_path_json, "r") as f:
-                lamini_index.values = torch.tensor(json.load(f), dtype=torch.float32, device=device)
+                lamini_index.values = torch.tensor(json.load(f), dtype=torch.float32)
         elif os.path.exists(values_path_npy):
             lamini_index.values = torch.from_numpy(np.load(values_path_npy)).float()
         else:
             raise ValueError("Values file not found")
+
+        lamini_index.keys = lamini_index.keys.to(device)
+        lamini_index.values = lamini_index.values.to(device)
 
         return lamini_index
     
