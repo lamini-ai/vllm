@@ -13,11 +13,7 @@ logger = init_logger(__name__)
 class LaminiIndex:
     def __init__(
         self,
-        cache_dir: str,
-        dataset=None,
     ):
-        self.cache_dir = cache_dir
-        self.dataset = dataset
         self.index = None
         self.splits = None
         self.keys = None
@@ -25,8 +21,8 @@ class LaminiIndex:
         self.embedding_dimension = None
 
     @staticmethod
-    def load_index(path, values_path, cache_dir):
-        lamini_index = LaminiIndex(cache_dir)
+    def load_index(key_path: str, values_path: str, device: str = "cuda") -> "LaminiIndex":
+        lamini_index = LaminiIndex()
 
         '''
         faiss_path = os.path.join(path, "index.faiss")
@@ -45,11 +41,11 @@ class LaminiIndex:
         '''
 
         # Load keys
-        keys_path_json = os.path.join(path, "keys.json")
-        keys_path_npy = os.path.join(path, "keys.npy")
+        keys_path_json = os.path.join(key_path, "keys.json")
+        keys_path_npy = os.path.join(key_path, "keys.npy")
         if os.path.exists(keys_path_json):
             with open(keys_path_json, "r") as f:
-                lamini_index.keys = torch.tensor(json.load(f), dtype=torch.float32)
+                lamini_index.keys = torch.tensor(json.load(f), dtype=torch.float32, device=device)
         elif os.path.exists(keys_path_npy):
             lamini_index.keys = torch.from_numpy(np.load(keys_path_npy)).float()
         else:
@@ -60,7 +56,7 @@ class LaminiIndex:
         values_path_npy = os.path.join(values_path, "values.npy")
         if os.path.exists(values_path_json):
             with open(values_path_json, "r") as f:
-                lamini_index.values = torch.tensor(json.load(f), dtype=torch.float32)
+                lamini_index.values = torch.tensor(json.load(f), dtype=torch.float32, device=device)
         elif os.path.exists(values_path_npy):
             lamini_index.values = torch.from_numpy(np.load(values_path_npy)).float()
         else:
