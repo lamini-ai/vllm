@@ -91,7 +91,7 @@ class MoMELayerWeights:
                                             dtype=dtype,
                                             device=device,
                                             pin_memory=pin_memory)
-            index = LaminiIndex.dummy_index(input_dim, index_dim, device)
+            index = LaminiIndex.dummy_index(index_dim)
             index_k = 2
         else:
             lora_a = torch.zeros([input_dim, rank],

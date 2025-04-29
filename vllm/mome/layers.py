@@ -261,7 +261,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = self.mome_forward(hidden_states)
         logger.debug("mome_attention output shape: %s", mome_attention_output.shape)
-        
+
         if layer_outputs.shape != mome_attention_output.shape:
             assert mome_attention_output.shape[0] == 1
             mome_attention_output = mome_attention_output.squeeze(0)

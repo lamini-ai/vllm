@@ -15,6 +15,7 @@ from vllm.config import (ObservabilityConfig, VllmConfig,
 from vllm.distributed import broadcast_tensor_dict, get_pp_group, get_tp_group
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.sequence import ExecuteModelRequest, IntermediateTensors
 from vllm.utils import (enable_trace_function_call_for_thread,
@@ -41,6 +42,7 @@ class WorkerBase(ABC):
         self.model_config = vllm_config.model_config
         self.cache_config = vllm_config.cache_config
         self.lora_config = vllm_config.lora_config
+        self.mome_config = vllm_config.mome_config
         self.load_config = vllm_config.load_config
         self.parallel_config = vllm_config.parallel_config
         self.scheduler_config = vllm_config.scheduler_config
@@ -127,6 +129,22 @@ class WorkerBase(ABC):
     @abstractmethod
     def list_loras(self) -> Set[int]:
         raise NotImplementedError
+    
+    @abstractmethod
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def remove_mome(self, mome_id: int) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def pin_mome(self, mome_id: int) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_momes(self) -> Set[int]:
+        raise NotImplementedError
 
 
 class DelegateWorkerBase(WorkerBase):
@@ -179,6 +197,18 @@ class DelegateWorkerBase(WorkerBase):
 
     def list_loras(self) -> Set[int]:
         return self.worker.list_loras()
+    
+    def add_mome(self, mome_request: MoMERequest) -> bool:
+        return self.worker.add_mome(mome_request)
+    
+    def remove_mome(self, mome_id: int) -> bool:
+        return self.worker.remove_mome(mome_id)
+    
+    def pin_mome(self, mome_id: int) -> bool:
+        return self.worker.pin_mome(mome_id)
+    
+    def list_momes(self) -> Set[int]:
+        return self.worker.list_momes()
 
     def __getattr__(self, attr):
         return getattr(self.worker, attr)

@@ -739,7 +739,7 @@ class LLMEngine:
         if lora_request is not None and not self.lora_config:
             raise ValueError(f"Got lora_request {lora_request} but LoRA is "
                              "not enabled!")
-        if mome_request is not None and not self.model_config.mome:
+        if mome_request is not None and not self.mome_config:
             raise ValueError(f"Got mome_request {mome_request} but MoME is "
                              "not enabled!")
 
