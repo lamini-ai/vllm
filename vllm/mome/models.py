@@ -21,7 +21,7 @@ from vllm.config import MoMEConfig
 from vllm.logger import init_logger
 
 from vllm.mome.mome import MoMELayerWeights
-from vllm.mome.model_definition.lamini_index import LaminiIndex
+from vllm.mome.lamini_index import LaminiIndex
 from vllm.mome.layers import (BaseLayerWithMoME, MoMEMapping)
 from vllm.mome.utils import (from_layer, replace_submodule, parse_fine_tuned_mome_name)
 
@@ -450,9 +450,9 @@ class MoMEModelManager(AdapterModelManager):
                     or not isinstance(module, BaseLayerWithMoME)):
                 continue
             if "self_attn" in module_name:
-                input_dim = module.query_proj_lora_a[0].shape[-1]
-                output_dim = module.value_proj_lora_b[0].shape[-2]
-                weight_dtype = module.query_proj_lora_a[0].dtype
+                input_dim = module.query_proj_lora_a_tensors[0].shape[-1]
+                output_dim = module.value_proj_lora_b_tensors[0].shape[-2]
+                weight_dtype = module.query_proj_lora_a_tensors[0].dtype
             else:
                 input_dim = module.lora_a_tensors[0].shape[-1]
                 output_dim = module.lora_b_tensors[0].shape[-2]

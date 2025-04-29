@@ -7,7 +7,7 @@ import torch
 import torch.types
 
 from vllm.utils import is_pin_memory_available
-from vllm.mome.model_definition.lamini_index import LaminiIndex
+from vllm.mome.lamini_index import LaminiIndex
 
 
 class MoMELayerWeights:

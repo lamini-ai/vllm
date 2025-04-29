@@ -37,7 +37,7 @@ from vllm.logger import init_logger
 
 import inspect
 from vllm.mome.mome import MoMELayerWeights
-from vllm.mome.model_definition.lamini_index import LaminiIndex
+from vllm.mome.lamini_index import LaminiIndex
 
 
 logger = init_logger(__name__)
@@ -181,7 +181,6 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         self.query_proj_lora_b_tensors = torch.zeros(
             (
                 max_loras,
-                lora_b_out_size,
                 index_dimension,
                 lora_a_out_size,
             ),
@@ -257,11 +256,11 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         logger.info("hidden_states.shape: %s, hidden_states.dtype: %s", hidden_states.shape, hidden_states.dtype)
 
         layer_outputs = self.base_layer(hidden_states=hidden_states, **kwargs)
-        logger.info("base_layer outputs.shape: %s", layer_outputs.shape)
+        logger.debug("base_layer outputs.shape: %s", layer_outputs.shape)
 
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = self.mome_forward(hidden_states)
-        logger.info(f"mome_attention_output shape %s:", mome_attention_output.shape)
+        logger.debug(f"mome_attention_output shape %s:", mome_attention_output.shape)
         # logger.debug(
         #     f"mome_attention_output: {mome_attention_output} {torch.histogram(mome_attention_output, bins=4)}"
         # )
@@ -294,14 +293,6 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         logger.info("key.shape: %s, key.dtype: %s", key.shape, key.dtype)
         logger.info("value.shape: %s, value.dtype: %s", value.shape, value.dtype)
 
-        # convert key to the dtype of the query
-        logger.info("start to convert key and value to the original dtype")
-        target_dtype = hidden_states.dtype
-        query = query.to(target_dtype)
-        key = key.to(target_dtype)
-        value = value.to(target_dtype)
-        logger.info("query,key,value to original dtype: %s success", target_dtype)
-
         # project the mome attention output to the same size as the transformer attention output
         try:
             mome_attention_output = F.scaled_dot_product_attention(
@@ -318,21 +309,17 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
             raise e
 
         output = self.project_value(mome_attention_output)
-        logger.info("project_value success. output dtype: %s ", output.dtype)
+        logger.debug("project_value success. output dtype: %s ", output.dtype)
         return output
 
     def project_value(self, value):
-        original_dtype = value.dtype
         value = F.linear(value, self.value_proj_lora_a_tensors[0], bias=None)
         value = F.linear(value, self.value_proj_lora_b_tensors[0], bias=None)
-        value = value.to(original_dtype)
         return value
 
     def project_query(self, hidden_states):
-        original_dtype = hidden_states.dtype
         query = F.linear(hidden_states, self.query_proj_lora_a_tensors[0], bias=None)
         query = F.linear(query, self.query_proj_lora_b_tensors[0], bias=None)
-        query = query.to(original_dtype)
         return query
 
     def get_key_and_value(self, query):
@@ -340,52 +327,22 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         return key, value
 
     def get_key_and_value_from_index(self, query):
-        if query.dim() == 2:
-            batch_size = 1
-            sequence_length = query.shape[0]
-            embedding_dimension = query.shape[1]
-        else:
-            batch_size = query.shape[0]
-            sequence_length = query.shape[1]
-            embedding_dimension = query.shape[2]
-        # logger.debug(f"batch_size: {batch_size}")
-        # logger.debug(f"sequence_length: {sequence_length}")
-        # logger.debug(f"embedding_dimension: {embedding_dimension}")
+        assert query.dim() == 2
+        # if query.dim() == 2:
+        #     batch_size = 1
+        #     sequence_length = query.shape[0]
+        #     embedding_dimension = query.shape[1]
+        # else:
+        #     batch_size = query.shape[0]
+        #     sequence_length = query.shape[1]
+        #     embedding_dimension = query.shape[2]
+        # query_new = query.view(batch_size * sequence_length, embedding_dimension)
 
-        device = query.device
-        original_dtype = query.dtype
-
-        query_new = query.view(batch_size * sequence_length, embedding_dimension)
-
-        # get the key and value from the index, no gradients
         with torch.no_grad():
-            # convert query to float32
-            query_new = query_new.float()
-
-            # convert query to a numpy array
-            query_new = query_new.cpu().numpy()
-
-            key, value, indices = self.index.get_key_and_value(
-                query_new, k=self.index_k
-            )
-            # convert key and values, which are lists, to numpy arrays
-            key = np.array(key)
-            value = np.array(value)
-
-            # convert key and value to torch tensors
-            key = torch.from_numpy(key).to(device, dtype=original_dtype)
-            value = torch.from_numpy(value).to(device, dtype=original_dtype)
-
-            # logger.debug(f"key shape: {key.shape}")
-
-            key = key.view(
-                batch_size, self.index_k * sequence_length, embedding_dimension
-            )
-            value = value.view(
-                batch_size, self.index_k * sequence_length, embedding_dimension
-            )
-
-        return key, value, indices
+            keys, values, indices = self.index.get_key_and_value(query, k=self.index_k)
+            #keys = keys.view(batch_size, self.index_k * sequence_length, embedding_dimension)
+            #values = values.view(batch_size, self.index_k * sequence_length, embedding_dimension)
+        return keys, values, indices
 
 
 class LoraMLPAdaptor(BaseLayerWithMoME):
@@ -479,7 +436,7 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         if self.linear_method is None:
             raise ValueError(
                 "LoraHeadAdaptor init ERROR. The linear_method is not set in the base layer."
-            )   
+            )
         self.device = _get_mome_device(self.base_layer)
 
         # mapping tensors
@@ -533,7 +490,7 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
 
     def _reset_parameters(self, index):
         self.head_lora_out[index].weight.data.zero_()
-    
+
     def reset_mome(self, index: int):
         self.head_lora_in[index] = None
         self.head_lora_out[index] = None
