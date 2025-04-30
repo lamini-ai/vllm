@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from vllm.config import TokenizerPoolConfig
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.transformers_utils.tokenizer import AnyTokenizer
 
 
@@ -35,6 +36,7 @@ class BaseTokenizerGroup(ABC):
                prompt: str,
                request_id: Optional[str] = None,
                lora_request: Optional[LoRARequest] = None,
+               mome_request: Optional[MoMERequest] = None,
                add_special_tokens: Optional[bool] = None) -> List[int]:
         """Encode a prompt using the tokenizer group."""
         pass
@@ -45,6 +47,7 @@ class BaseTokenizerGroup(ABC):
             prompt: str,
             request_id: Optional[str] = None,
             lora_request: Optional[LoRARequest] = None,
+            mome_request: Optional[MoMERequest] = None,
             add_special_tokens: Optional[bool] = None) -> List[int]:
         """Encode a prompt using the tokenizer group."""
         pass
@@ -63,6 +66,22 @@ class BaseTokenizerGroup(ABC):
         lora_request: Optional[LoRARequest] = None,
     ) -> AnyTokenizer:
         """Get a tokenizer for a LoRA request."""
+        pass
+
+    @abstractmethod
+    def get_mome_tokenizer(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        """Get a tokenizer for a MoME request."""
+        pass
+
+    @abstractmethod
+    async def get_mome_tokenizer_async(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        """Get a tokenizer for a MoME request."""
         pass
 
     def check_health(self):

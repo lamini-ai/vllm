@@ -8,6 +8,7 @@ from typing_extensions import assert_never
 from vllm.config import ModelConfig
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.multimodal import MULTIMODAL_REGISTRY, MultiModalRegistry
 from vllm.multimodal.inputs import MultiModalDataDict, MultiModalInputs
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -182,6 +183,7 @@ class InputPreprocessor:
         prompt: str,
         request_id: str,
         lora_request: Optional[LoRARequest],
+        mome_request: Optional[MoMERequest],
     ) -> List[int]:
         """
         Apply the model's tokenizer to a text prompt, returning the
@@ -203,6 +205,7 @@ class InputPreprocessor:
         return tokenizer.encode(request_id=request_id,
                                 prompt=prompt,
                                 lora_request=lora_request,
+                                # mome_request=mome_request,
                                 add_special_tokens=add_special_tokens)
 
     async def _tokenize_prompt_async(
@@ -291,6 +294,7 @@ class InputPreprocessor:
         prompt: SingletonPrompt,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
     ) -> SingletonInputs:
         """
         Extract the singleton inputs from a prompt.
@@ -313,6 +317,7 @@ class InputPreprocessor:
                 prompt_text,
                 request_id=request_id,
                 lora_request=lora_request,
+                # mome_request=mome_request,
             )
 
             return token_inputs(
@@ -604,6 +609,7 @@ class InputPreprocessor:
         prompt: SingletonPrompt,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> DecoderOnlyInputs:
         """
@@ -615,6 +621,7 @@ class InputPreprocessor:
         * prompt: input prompt
         * request_id
         * lora_request
+        * mome_request
         * prompt_adapter_request
 
         Returns:
@@ -626,6 +633,7 @@ class InputPreprocessor:
             prompt,
             request_id=request_id,
             lora_request=lora_request,
+            # mome_request=mome_request,
         )
 
         return self._build_decoder_only_llm_inputs(
@@ -657,6 +665,7 @@ class InputPreprocessor:
         prompt: PromptType,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> ProcessorInputs:
         """Preprocess the input prompt."""
@@ -677,6 +686,7 @@ class InputPreprocessor:
             prompt,
             request_id=request_id,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )
 
@@ -685,6 +695,7 @@ class InputPreprocessor:
         prompt: PromptType,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        # mome_request: Optional[LoRARequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> ProcessorInputs:
         """Async version of :meth:`preprocess`."""
@@ -705,5 +716,6 @@ class InputPreprocessor:
             prompt,
             request_id=request_id,
             lora_request=lora_request,
+            # mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )

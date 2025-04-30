@@ -29,7 +29,6 @@ class MoMERequest(
     mome_int_id: int
     mome_path: str = ""
     mome_local_path: Optional[str] = msgspec.field(default=None)
-    long_mome_max_len: Optional[int] = None
     base_model_name: Optional[str] = msgspec.field(default=None)
 
     def __post_init__(self):

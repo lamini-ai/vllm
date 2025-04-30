@@ -15,6 +15,7 @@ from vllm.config import TokenizerPoolConfig
 from vllm.executor.ray_utils import ray
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.transformers_utils.tokenizer import AnyTokenizer
 
 from .base_tokenizer_group import BaseTokenizerGroup
@@ -230,6 +231,19 @@ class RayTokenizerGroupPool(BaseTokenizerGroup):
     ) -> AnyTokenizer:
         return await self._local_tokenizer_group.get_lora_tokenizer_async(
             lora_request)
+
+    def get_mome_tokenizer(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        return self._local_tokenizer_group.get_mome_tokenizer(mome_request)
+    
+    async def get_mome_tokenizer_async(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        return await self._local_tokenizer_group.get_mome_tokenizer_async(
+            mome_request)
 
     def check_health(self):
         if self._exception:

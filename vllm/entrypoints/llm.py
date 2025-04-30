@@ -835,6 +835,7 @@ class LLM:
         prompt_token_ids: List[List[int]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+        mome_request: Optional[Union[List[MoMERequest], MoMERequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> List[PoolingRequestOutput]:
         ...

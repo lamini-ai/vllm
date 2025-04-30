@@ -61,6 +61,12 @@ class PoolingModelRunner(
             assert model_input.lora_mapping is not None
             self.set_active_loras(model_input.lora_requests,
                                   model_input.lora_mapping)
+            
+        if self.mome_config:
+            assert model_input.mome_requests is not None
+            assert model_input.mome_mapping is not None
+            self.set_active_momes(model_input.mome_requests,
+                                  model_input.mome_mapping)
 
         if self.prompt_adapter_config:
             assert model_input.prompt_adapter_requests is not None

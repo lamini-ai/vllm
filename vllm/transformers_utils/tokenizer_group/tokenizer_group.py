@@ -4,9 +4,12 @@ from typing import List, Optional
 
 from vllm.config import TokenizerPoolConfig
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.transformers_utils.tokenizer import (AnyTokenizer, encode_tokens,
                                                get_lora_tokenizer,
                                                get_lora_tokenizer_async,
+                                               get_mome_tokenizer,
+                                               get_mome_tokenizer_async,
                                                get_tokenizer)
 from vllm.utils import LRUCache
 
@@ -106,3 +109,31 @@ class TokenizerGroup(BaseTokenizerGroup):
             return tokenizer
         else:
             return self.lora_tokenizers[lora_request.lora_int_id]
+
+    def get_mome_tokenizer(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        if not mome_request or not self.enable_lora:
+            return self.tokenizer
+        if mome_request.mome_int_id not in self.lora_tokenizers:
+            tokenizer = (get_mome_tokenizer(
+                mome_request, **self.tokenizer_config) or self.tokenizer)
+            self.lora_tokenizers.put(mome_request.mome_int_id, tokenizer)
+            return tokenizer
+        else:
+            return self.lora_tokenizers[mome_request.mome_int_id]
+        
+    async def get_mome_tokenizer_async(
+        self,
+        mome_request: Optional[MoMERequest] = None,
+    ) -> AnyTokenizer:
+        if not mome_request or not self.enable_lora:
+            return self.tokenizer
+        if mome_request.mome_int_id not in self.lora_tokenizers:
+            tokenizer = (await get_mome_tokenizer_async(
+                mome_request, **self.tokenizer_config) or self.tokenizer)
+            self.lora_tokenizers.put(mome_request.mome_int_id, tokenizer)
+            return tokenizer
+        else:
+            return self.lora_tokenizers[mome_request.mome_int_id]

@@ -50,7 +50,7 @@ def convert_mapping(
     """Converts MoMEMapping to index tensors.
 
     Args:
-        mapping: M o MEMapping mapping rows in a batch to MoME ids.
+        mapping: MoMEMapping mapping rows in a batch to MoME ids.
         mome_index_to_id: List mapping MoME ids to MoME indices.
         max_momes: Maximum number of MoMEs.
         device: Device to use for the tensors.

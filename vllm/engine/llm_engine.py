@@ -703,6 +703,7 @@ class LLMEngine:
             arrival_time: The arrival time of the request. If None, we use
                 the current monotonic time.
             lora_request: The LoRA request to add.
+            mome_request: The MoME request to add.
             trace_headers: OpenTelemetry trace headers.
             prompt_adapter_request: The prompt adapter request to add.
             priority: The priority of the request.
@@ -766,6 +767,7 @@ class LLMEngine:
             prompt,
             request_id=request_id,
             lora_request=lora_request,
+            mome_request=mome_request,
             prompt_adapter_request=prompt_adapter_request,
         )
         processed_inputs = self.input_processor(preprocessed_inputs)

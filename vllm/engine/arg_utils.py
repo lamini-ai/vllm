@@ -147,7 +147,7 @@ class EngineArgs:
     max_lora_rank: int = 16
     enable_mome: bool = False
     max_momes: int = 1
-    max_mome_rank: int = 16
+    max_mome_rank: int = 32
     mome_dtype: Optional[Union[str, torch.dtype]] = 'auto'
     max_cpu_momes: Optional[int] = None
     enable_prompt_adapter: bool = False
