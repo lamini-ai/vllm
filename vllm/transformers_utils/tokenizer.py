@@ -14,6 +14,7 @@ from transformers import (AutoTokenizer, PreTrainedTokenizer,
 from vllm.envs import VLLM_USE_MODELSCOPE
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.transformers_utils.tokenizers import MistralTokenizer
 from vllm.transformers_utils.utils import check_gguf_file
 from vllm.utils import make_async
@@ -243,3 +244,21 @@ def get_lora_tokenizer(lora_request: LoRARequest, *args,
 
 
 get_lora_tokenizer_async = make_async(get_lora_tokenizer)
+
+def get_mome_tokenizer(mome_request: MoMERequest, *args,
+                       **kwargs) -> Optional[AnyTokenizer]:
+    if mome_request is None:
+        return None
+    try:
+        tokenizer = get_tokenizer(mome_request.lora_path, *args, **kwargs)
+    except Exception as e:
+        # No tokenizer was found in the LoRA folder,
+        # use base model tokenizer
+        logger.warning(
+            "No tokenizer found in %s, using base model tokenizer instead. "
+            "(Exception: %s)", mome_request.mome_path, e)
+        tokenizer = None
+    return tokenizer
+
+
+get_mome_tokenizer_async = make_async(get_mome_tokenizer)
