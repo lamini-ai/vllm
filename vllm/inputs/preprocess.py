@@ -183,7 +183,7 @@ class InputPreprocessor:
         prompt: str,
         request_id: str,
         lora_request: Optional[LoRARequest],
-        mome_request: Optional[MoMERequest],
+        # mome_request: Optional[MoMERequest],
     ) -> List[int]:
         """
         Apply the model's tokenizer to a text prompt, returning the
