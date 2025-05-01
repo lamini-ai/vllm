@@ -66,6 +66,9 @@ class Stats:
     waiting_lora_adapters: List[str]
     running_lora_adapters: List[str]
     max_lora: str
+    waiting_mome_adapters: List[str]
+    running_mome_adapters: List[str]
+    max_mome: str
 
     spec_decode_metrics: Optional["SpecDecodeWorkerMetrics"] = None
 

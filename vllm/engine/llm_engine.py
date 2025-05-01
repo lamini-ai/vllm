@@ -304,6 +304,8 @@ class LLMEngine:
                     # Feature flags
                     "enable_lora":
                     bool(self.lora_config),
+                    "enable_mome":
+                    bool(self.mome_config),
                     "enable_prompt_adapter":
                     bool(self.prompt_adapter_config),
                     "enable_prefix_caching":
@@ -351,7 +353,7 @@ class LLMEngine:
         self.scheduler = [
             Scheduler(
                 self.scheduler_config, self.cache_config, self.lora_config,
-                self.parallel_config.pipeline_parallel_size,
+                self.mome_config, self.parallel_config.pipeline_parallel_size,
                 self.async_callbacks[v_id]
                 if self.model_config.use_async_output_proc else None)
             for v_id in range(self.parallel_config.pipeline_parallel_size)
@@ -576,10 +578,12 @@ class LLMEngine:
             )
             return None
 
+        # TODO: Check mome_request
         self._validate_model_inputs(processed_inputs, lora_request)
         # Create the sequences.
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
+        # TODO: Check mome_request
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
 
         if is_encoder_decoder_inputs(processed_inputs):
@@ -1668,6 +1672,25 @@ class LLMEngine:
         if self.lora_config:
             max_lora_stat = str(self.lora_config.max_loras)
 
+        # MoME requests
+        running_mome_adapters = dict(
+            collectionsCounter([
+                running_request.mome_request.mome_name
+                for scheduler in self.scheduler
+                for running_request in scheduler.running
+                if running_request.mome_request
+            ]))
+        waiting_mome_adapters = dict(
+            collectionsCounter([
+                waiting_request.mome_request.mome_name
+                for scheduler in self.scheduler
+                for waiting_request in scheduler.waiting
+                if waiting_request.mome_request
+            ]))
+        max_mome_stat = "0"
+        if self.mome_config:
+            max_mome_stat = str(self.mome_config.max_momes)
+
         # NOTE: This loop assumes prefill seq_groups are before
         # decode seq_groups in scheduled_seq_groups.
         if scheduler_outputs is not None:
@@ -1838,7 +1861,10 @@ class LLMEngine:
             finished_reason_requests=finished_reason_requests,
             max_lora=str(max_lora_stat),
             waiting_lora_adapters=list(waiting_lora_adapters.keys()),
-            running_lora_adapters=list(running_lora_adapters.keys()))
+            running_lora_adapters=list(running_lora_adapters.keys()),
+            max_mome=str(max_mome_stat),
+            waiting_mome_adapters=list(waiting_mome_adapters.keys()),
+            running_mome_adapters=list(running_mome_adapters.keys()))
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
         return self.model_executor.add_lora(lora_request)

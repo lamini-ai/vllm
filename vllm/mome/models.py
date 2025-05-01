@@ -72,22 +72,22 @@ def convert_mapping(
     """
     index_mapping_indices: List[int] = list(mapping.index_mapping).copy()
     embedding_indices = index_mapping_indices.copy()
-    lora_indices = index_mapping_indices.copy()
+    mome_indices = index_mapping_indices.copy()
 
     prompt_mapping: List[int] = [
         mome_index_to_id.index(x) if x > 0 else -1
         for x in mapping.prompt_mapping
     ]
-    lora_idx = None
+    mome_idx = None
     for i in range(len(index_mapping_indices)):
-        lora_idx = (mome_index_to_id.index(index_mapping_indices[i])
+        mome_idx = (mome_index_to_id.index(index_mapping_indices[i])
                     if index_mapping_indices[i] > 0 else -1)
-        embedding_indices[i] = lora_idx if index_mapping_indices[i] > 0 else 0
-        lora_indices[i] = lora_idx
+        embedding_indices[i] = mome_idx if index_mapping_indices[i] > 0 else 0
+        mome_indices[i] = mome_idx
 
     indices_list: List[Union[List[int], torch.Tensor]] = [
         index_mapping_indices,
-        lora_indices,
+        mome_indices,
         embedding_indices,
     ]
     indices = torch.tensor(indices_list, dtype=torch.long, device=device)

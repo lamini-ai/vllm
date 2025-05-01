@@ -473,6 +473,10 @@ class Sequence:
     @property
     def lora_int_id(self) -> int:
         return self.lora_request.lora_int_id if self.lora_request else 0
+    
+    @property
+    def mome_int_id(self) -> int:
+        return self.mome_request.mome_int_id if self.mome_request else 0
 
     @property
     def prompt_adapter_id(self) -> int:
@@ -538,12 +542,12 @@ class Sequence:
         designed for prefix caching mode. The final sequence hash is determined
         by applying token_ids from the sequence's blocks.
         """
-        if self.prompt_adapter_id == 0 and self.lora_int_id == 0:
+        if self.prompt_adapter_id == 0 and self.lora_int_id == 0 and self.mome_int_id == 0:
             return None
 
         # NOTE: If there are additional factors influencing the block aside from
         # token_ids, include them as input parameters to the hash.
-        return hash((self.prompt_adapter_id, self.lora_int_id))
+        return hash((self.prompt_adapter_id, self.lora_int_id, self.mome_int_id))
 
     def num_hashed_tokens_of_block(self, logical_idx: int):
         return logical_idx * self.block_size + self.block_size

@@ -10,10 +10,11 @@ from typing import Callable, Deque, Dict, Iterable, List, Optional
 from typing import Sequence as GenericSequence
 from typing import Set, Tuple, Union
 
-from vllm.config import CacheConfig, LoRAConfig, SchedulerConfig
+from vllm.config import CacheConfig, LoRAConfig, MoMEConfig, SchedulerConfig
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupMetadata, SequenceGroupMetadataDelta,
@@ -159,6 +160,10 @@ class SchedulerOutputs:
         self.num_loras: int = len(self.lora_requests)
         if self.num_loras > 0:
             self._sort_by_lora_ids()
+        
+        self.num_momes: int = len(self.mome_requests)
+        if self.num_momes > 0:
+            self._sort_by_mome_ids()
 
         self.num_prompt_adapters: int = len(self.prompt_adapter_requests)
 
@@ -181,12 +186,34 @@ class SchedulerOutputs:
         self.scheduled_seq_groups = sorted(self.scheduled_seq_groups,
                                            key=key_fn)
 
+    def _sort_by_mome_ids(self):
+        assert 0 <= self.num_prefill_groups <= len(self.scheduled_seq_groups)
+
+        def key_fn(group: ScheduledSequenceGroup):
+            key = (group.seq_group.mome_int_id, group.seq_group.request_id)
+            if 0 < self.num_prefill_groups < len(self.scheduled_seq_groups):
+                # Sort sequence groups so that all prefills come before all
+                # decodes as required by chunked prefill.
+                return (not group.seq_group.is_prefill(), *key)
+            return key
+
+        self.scheduled_seq_groups = sorted(self.scheduled_seq_groups,
+                                           key=key_fn)
+
     @property
     def lora_requests(self) -> Set[LoRARequest]:
         return {
             g.seq_group.lora_request
             for g in self.scheduled_seq_groups
             if g.seq_group.lora_request is not None
+        }
+
+    @property
+    def mome_requests(self) -> Set[MoMERequest]:
+        return {
+            g.seq_group.mome_request
+            for g in self.scheduled_seq_groups
+            if g.seq_group.mome_request is not None
         }
 
     @property
@@ -328,6 +355,7 @@ class Scheduler:
         scheduler_config: SchedulerConfig,
         cache_config: CacheConfig,
         lora_config: Optional[LoRAConfig],
+        mome_config: Optional[MoMEConfig],
         pipeline_parallel_size: int = 1,
         output_proc_callback: Optional[Callable] = None,
     ) -> None:
@@ -337,6 +365,7 @@ class Scheduler:
         # simple and NOT fair. It can lead to starvation of some
         # LoRAs. This should be improved in the future.
         self.lora_config = lora_config
+        self.mome_config = mome_config
 
         version = "selfattn"
         if (self.scheduler_config.runner_type == "pooling"
@@ -428,6 +457,10 @@ class Scheduler:
     @property
     def lora_enabled(self) -> bool:
         return bool(self.lora_config)
+    
+    @property
+    def mome_enabled(self) -> bool:
+        return bool(self.mome_config)
 
     @property
     def num_decoding_tokens_per_seq(self) -> int:
@@ -522,6 +555,7 @@ class Scheduler:
         self,
         budget: SchedulingBudget,
         curr_loras: Optional[Set[int]],
+        curr_momes: Optional[Set[int]],
         enable_chunking: bool = False,
     ) -> SchedulerRunningOutputs:
         """Schedule sequence groups that are running.
@@ -532,6 +566,8 @@ class Scheduler:
             budget: The scheduling budget. The argument is in-place updated
                 when any decodes are preempted.
             curr_loras: Currently batched lora request ids. The argument is
+                in-place updated when any decodes are preempted.
+            curr_momes: Currently batched mome request ids. The argument is
                 in-place updated when any decodes are preempted.
             enable_chunking: If True, seq group can be chunked and only a
                 chunked number of tokens are scheduled  if
@@ -611,6 +647,10 @@ class Scheduler:
                         and seq_group.lora_int_id in curr_loras):
                     curr_loras.remove(seq_group.lora_int_id)
 
+                if (curr_momes is not None and seq_group.mome_int_id > 0
+                        and seq_group.mome_int_id in curr_momes):
+                    curr_momes.remove(seq_group.mome_int_id)
+
                 # Determine victim sequence
                 cont_loop = True
                 if running_queue:
@@ -676,6 +716,8 @@ class Scheduler:
                     budget.add_num_seqs(seq_group.request_id, num_running_seqs)
                 if curr_loras is not None and seq_group.lora_int_id > 0:
                     curr_loras.add(seq_group.lora_int_id)
+                if curr_momes is not None and seq_group.mome_int_id > 0:
+                    curr_momes.add(seq_group.mome_int_id)
 
         self._scheduler_running_outputs_cache[self.next_cache_id].reset()
         self._scheduled_seq_group_cache[self.next_cache_id].reset()
@@ -686,6 +728,7 @@ class Scheduler:
         self,
         budget: SchedulingBudget,
         curr_loras: Optional[Set[int]],
+        curr_momes: Optional[Set[int]],
         enable_chunking: bool = False,
     ) -> SchedulerSwappedInOutputs:
         """Schedule sequence groups that are swapped out.
@@ -746,6 +789,18 @@ class Scheduler:
                 if (lora_int_id > 0 and (lora_int_id not in curr_loras)
                         and len(curr_loras) >= self.lora_config.max_loras):
                     # We don't have a space for another LoRA, so
+                    # we ignore this request for now.
+                    leftover_swapped.appendleft(seq_group)
+                    swapped_queue.popleft()
+                    continue
+
+            mome_int_id = 0
+            if self.mome_enabled:
+                mome_int_id = seq_group.mome_int_id
+                assert curr_momes is not None
+                if (mome_int_id > 0 and (mome_int_id not in curr_momes)
+                        and len(curr_momes) >= self.mome_config.max_momes):
+                    # We don't have a space for another MoME, so
                     # we ignore this request for now.
                     leftover_swapped.appendleft(seq_group)
                     swapped_queue.popleft()
@@ -896,6 +951,7 @@ class Scheduler:
         self,
         budget: SchedulingBudget,
         curr_loras: Optional[Set[int]],
+        curr_momes: Optional[Set[int]],
         enable_chunking: bool = False,
     ) -> SchedulerPrefillOutputs:
         """Schedule sequence groups that are in prefill stage.
@@ -990,6 +1046,20 @@ class Scheduler:
                     waiting_queue.popleft()
                     continue
 
+            mome_int_id = 0
+            if self.mome_enabled:
+                mome_int_id = seq_group.mome_int_id
+                assert curr_momes is not None
+                assert self.mome_config is not None
+                if (self.mome_enabled and mome_int_id > 0
+                        and mome_int_id not in curr_momes
+                        and len(curr_momes) >= self.mome_config.max_momes):
+                    # We don't have a space for another MoME, so
+                    # we ignore this request for now.
+                    leftover_waiting_sequences.appendleft(seq_group)
+                    waiting_queue.popleft()
+                    continue
+
             if (budget.num_batched_tokens
                     >= self.scheduler_config.max_num_batched_tokens):
                 # We've reached the budget limit - since there might be
@@ -1007,6 +1077,8 @@ class Scheduler:
             # Can schedule this request.
             if curr_loras is not None and lora_int_id > 0:
                 curr_loras.add(lora_int_id)
+            if curr_momes is not None and mome_int_id > 0:
+                curr_momes.add(mome_int_id)
             waiting_queue.popleft()
             self._allocate_and_set_running(seq_group)
 
@@ -1069,6 +1141,10 @@ class Scheduler:
         curr_loras = set(
             seq_group.lora_int_id for seq_group in self.running
             if seq_group.lora_int_id > 0) if self.lora_enabled else None
+        
+        curr_momes = set(
+            seq_group.mome_int_id for seq_group in self.running
+            if seq_group.mome_int_id > 0) if self.mome_enabled else None
 
         prefills = SchedulerPrefillOutputs.create_empty()
         running_scheduled = SchedulerRunningOutputs.create_empty()
@@ -1078,6 +1154,7 @@ class Scheduler:
         if not self.swapped:
             prefills = self._schedule_prefills(budget,
                                                curr_loras,
+                                               curr_momes,
                                                enable_chunking=False)
 
         if len(prefills.seq_groups
@@ -1090,13 +1167,14 @@ class Scheduler:
         if len(prefills.seq_groups) == 0:
             running_scheduled = self._schedule_running(budget,
                                                        curr_loras,
+                                                       curr_momes,
                                                        enable_chunking=False)
 
             # If any sequence group is preempted, do not swap in any sequence
             # group. because it means there's no slot for new running requests.
             if len(running_scheduled.preempted) + len(
                     running_scheduled.swapped_out) == 0:
-                swapped_in = self._schedule_swapped(budget, curr_loras)
+                swapped_in = self._schedule_swapped(budget, curr_loras, curr_momes)
 
         assert (budget.num_batched_tokens
                 <= self.scheduler_config.max_num_batched_tokens)
@@ -1172,6 +1250,7 @@ class Scheduler:
             max_num_seqs=self.scheduler_config.max_num_seqs,
         )
         curr_loras: Set[int] = set()
+        curr_momes: Set[int] = set()
 
         prefills = SchedulerPrefillOutputs.create_empty()
         swapped_in = SchedulerSwappedInOutputs.create_empty()
@@ -1179,16 +1258,18 @@ class Scheduler:
         # Decoding should be always scheduled first by fcfs.
         running_scheduled = self._schedule_running(budget,
                                                    curr_loras,
+                                                   curr_momes,
                                                    enable_chunking=True)
 
         # Schedule swapped out requests.
         # If preemption happens, it means we don't have space for swap-in.
         if len(running_scheduled.preempted) + len(
                 running_scheduled.swapped_out) == 0:
-            swapped_in = self._schedule_swapped(budget, curr_loras)
+            swapped_in = self._schedule_swapped(budget, curr_loras, curr_momes)
 
         prefills = self._schedule_prefills(budget,
                                            curr_loras,
+                                           curr_momes,
                                            enable_chunking=True)
 
         assert (budget.num_batched_tokens
@@ -1377,6 +1458,7 @@ class Scheduler:
                     pooling_params=seq_group.pooling_params,
                     token_chunk_size=token_chunk_size,
                     lora_request=seq_group.lora_request,
+                    mome_request=seq_group.mome_request,
                     computed_block_nums=common_computed_block_nums,
                     encoder_seq_data=encoder_seq_data,
                     cross_block_table=cross_block_table,
