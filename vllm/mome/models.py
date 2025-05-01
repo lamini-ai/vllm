@@ -164,7 +164,7 @@ class MoMEModel(AdapterModel):
         for tensor_name, tensor in tensors.items():
             (module_name, is_lora_a, is_mome_attention, _, _, 
              is_mome_attention_query_proj, is_mome_attention_value_proj) = parse_fine_tuned_mome_name(tensor_name)
-            
+
             # initialize MoMELayerWeights object and store in momes dict
             if module_name not in momes:
                 momes[module_name] = MoMELayerWeights.from_config(
