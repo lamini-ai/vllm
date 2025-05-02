@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import tempfile
 from collections import OrderedDict
 from typing import Dict, List, TypedDict
@@ -68,7 +69,14 @@ def cleanup_fixture(should_do_global_cleanup_after_test: bool):
 
 @pytest.fixture(scope="session")
 def mome_adapter_files():
-    return "/root/34916/checkpoints/checkpoint-60"
+    adapter_path = "/root/34916/checkpoints/checkpoint-60"
+    if os.path.exists(adapter_path):
+        return adapter_path
+    else:
+        raise FileNotFoundError(
+            f"MoME adapter files not found at {adapter_path}. "
+            "Please make sure the test files had copy from the appropriate source."
+        )
 
 @pytest.fixture
 def dummy_model() -> nn.Module:
