@@ -162,7 +162,7 @@ class MoMEModel(AdapterModel):
         pin_memory = str(device) == "cpu" and is_pin_memory_available()
         momes: Dict[str, MoMELayerWeights] = {}
         for tensor_name, tensor in tensors.items():
-            (module_name, is_lora_a, is_mome_attention, _, _, 
+            (module_name, is_lora_a, is_mome_attention, _, _,
              is_mome_attention_query_proj, is_mome_attention_value_proj) = parse_fine_tuned_mome_name(tensor_name)
 
             # initialize MoMELayerWeights object and store in momes dict
@@ -256,14 +256,17 @@ class MoMEModel(AdapterModel):
                     # here part_name should be one of ["mome_attention", "mlp", "lm_head"]
                     if part_name not in expected_mome_modules:
                         unexpected_modules.append(module_name)
-                if unexpected_modules:
-                    raise ValueError(
-                        f"While loading {mome_dir}, expected"
-                        f" target modules in {expected_mome_modules}"
-                        f" but received {unexpected_modules}."
-                        f" Please verify that the loaded MoME module is correct"
-                    )
+                #if unexpected_modules:
+                #    raise ValueError(
+                #        f"While loading {mome_dir}, expected"
+                #        f" target modules in {expected_mome_modules}"
+                #        f" but received {unexpected_modules}."
+                #        f" Please verify that the loaded MoME module is correct"
+                #    )
                 for module in f.keys():  # noqa
+                    # TODO sikp lm_head before fix lm_head layer
+                    if "lm_head" in module:
+                        continue
                     tensors[module] = f.get_tensor(module)
         elif os.path.isfile(mome_bin_file_path):
             unexpected_modules = []
@@ -394,15 +397,15 @@ class MoMEModelManager(AdapterModelManager):
             if isinstance(module, PPMissingLayer):
                 continue
             if not self._match_target_modules(module_name):
-                continue 
+                continue
             parts = module_name.split(".")[-1]
             packed_moduled_lst = self.packed_modules_mapping.get(parts, [])
             # 1. LoRA Layer for mlp
             if "mlp" in module_name:
                 logger.info("mlp in module_name: %s, start replace submodule", module_name)
                 new_module = replace_submodule(
-                    self.model, 
-                    module_name, 
+                    self.model,
+                    module_name,
                     from_layer(module, self.mome_slots, self.mome_config, packed_moduled_lst,
                                self.model.config)
                 )
@@ -412,7 +415,7 @@ class MoMEModelManager(AdapterModelManager):
                 new_module = replace_submodule(
                     self.model,
                     module_name,
-                    from_layer(module, self.mome_slots, self.mome_config, 
+                    from_layer(module, self.mome_slots, self.mome_config,
                                                 packed_moduled_lst, self.model.config)
                 )
             # 3. MoME Attention Layer

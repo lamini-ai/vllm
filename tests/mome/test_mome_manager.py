@@ -7,7 +7,7 @@ from safetensors.torch import load_file
 from torch import nn
 
 from vllm.config import MoMEConfig
-from vllm.mome.layers import (LoraMLPAdaptor, BaseMoMEAttentionLayer)
+from vllm.mome.layers import (LoraMLPAdaptor, MoMEAttentionLayer)
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.models import (MoMEMapping, MoMEModel, MoMEModelManager)
 from vllm.mome.request import MoMERequest

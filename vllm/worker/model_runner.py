@@ -1242,7 +1242,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                 self.device,
             )
             self.model = self.mome_manager.create_mome_manager(self.model)
-            logger.info("self.model after mome: ", self.model)
+            logger.info("self.model after mome: %s", self.model)
 
         if self.prompt_adapter_config:
             self.prompt_adapter_manager = LRUCacheWorkerPromptAdapterManager(
@@ -1502,6 +1502,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
     def set_active_loras(self, lora_requests: Set[LoRARequest],
                          lora_mapping: LoRAMapping) -> None:
+        # logger.debug("set_active_loras called. Setting active LoRA %s", lora_requests)
         if not self.lora_manager:
             raise RuntimeError("LoRA is not enabled.")
         self.lora_manager.set_active_adapters(lora_requests, lora_mapping)
@@ -1533,6 +1534,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
     def set_active_momes(self, mome_requests: Set[MoMERequest],
                          mome_mapping: LoRAMapping) -> None:
+        # logger.debug("set_active_momes called. Setting active MoME %s", mome_requests)
         if not self.mome_manager:
             raise RuntimeError("MoME is not enabled.")
         self.mome_manager.set_active_adapters(mome_requests, mome_mapping)
