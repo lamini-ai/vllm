@@ -63,13 +63,13 @@ def test_mome_model_manager(dist_init, dummy_model, device):
     model = dummy_model
     model.supported_lora_modules = ["dense1", "dense2", "lm_head"]
     model.packed_modules_mapping = {}
-    model_lora1 = create_lora(1,
+    model_lora1 = create_mome(1,
                               model, ["layer1.dense1", "dense2", "lm_head"],
                               device=device)
-    model_lora2 = create_lora(2,
+    model_lora2 = create_mome(2,
                               model, ["dense1", "dense2", "lm_head"],
                               device=device)
-    model_lora3 = create_lora(3,
+    model_lora3 = create_mome(3,
                               model, ["dense1", "dense2", "lm_head"],
                               device=device)
     manager = MoMEModelManager(model,

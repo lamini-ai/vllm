@@ -9,7 +9,6 @@ import torch
 from torch import nn
 
 from typing import Any, Dict, Optional
-from vllm.mome.model_definition.pretrained_lamini_mome_for_causal_lm import load_mome_model_for_inference
 
 from vllm.adapter_commons.models import (AdapterLRUCache, AdapterModel,
                                          AdapterModelManager)
