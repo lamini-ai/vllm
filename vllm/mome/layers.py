@@ -237,8 +237,8 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         if mome_index is None or mome_index_k is None:
             raise ValueError("mome_index or mome_index is None")
         else:
-            self.mome_index[index] = module_mome.index
-            self.mome_index_k[index] = module_mome.index_k
+            self.mome_index[index] = mome_index
+            self.mome_index_k[index] = mome_index_k
             # logger.debug("after set_mome mome_index, self.mome_index:%s", self.mome_index)
         if query_proj_lora_a is None or query_proj_lora_b is None:
             logger.warning("query_proj_lora_a or query_proj_lora_b is None")
@@ -257,7 +257,7 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
                                             :value_proj_lora_a.shape[0]].copy_(value_proj_lora_a.T, non_blocking=True)
             self.value_proj_lora_b_tensors[index,
                                             :value_proj_lora_b.shape[1],
-                                        :value_proj_lora_b.shape[0]].copy_(value_proj_lora_b.T, non_blocking=True)
+                                            :value_proj_lora_b.shape[0]].copy_(value_proj_lora_b.T, non_blocking=True)
 
     # Call layer with all inputs and kwargs
     def forward(
