@@ -118,8 +118,7 @@ class MoMEModel(AdapterModel):
             self,
             mome_model_id: str,
             rank: int,
-            momes: Dict[str, MoMELayerWeights],
-            indexs: Optional[list[int]] = None,
+            momes: Dict[str, MoMELayerWeights]
             ) -> None:
         """
         Args:
@@ -163,6 +162,16 @@ class MoMEModel(AdapterModel):
         for tensor_name, tensor in tensors.items():
             (module_name, is_lora_a, is_mome_attention, _, _,
              is_mome_attention_query_proj, is_mome_attention_value_proj) = parse_fine_tuned_mome_name(tensor_name)
+            # logger.debug(
+            #     "from_mome_tensors module_name: %s, is_lora_a: %s, "
+            #     "is_mome_attention: %s, is_mome_attention_query_proj: %s, "
+            #     "is_mome_attention_value_proj: %s",
+            #     module_name,
+            #     is_lora_a,
+            #     is_mome_attention,
+            #     is_mome_attention_query_proj,
+            #     is_mome_attention_value_proj,
+            # )
 
             # initialize MoMELayerWeights object and store in momes dict
             if module_name not in momes:
@@ -170,9 +179,9 @@ class MoMEModel(AdapterModel):
                     module_name, config_content["r_value"])
             # set the mome_attention tensors
             if is_mome_attention:
-                if momes[module_name].index is None:
-                    momes[module_name].index = mome_index
-                    momes[module_name].index_k = config_content["index_k"]
+                if momes[module_name].mome_index is None:
+                    momes[module_name].mome_index = mome_index
+                    momes[module_name].mome_index_k = config_content["index_k"]
                 if is_mome_attention_query_proj:
                     if is_lora_a:
                         momes[module_name].query_proj_lora_a = tensor.to(device=device,
@@ -356,6 +365,7 @@ class MoMEModelManager(AdapterModelManager):
         self.mome_index_to_id[index] = mome_model.id
         for module_name, module in self.modules.items():
             module_mome = mome_model.get_mome(module_name)
+            # logger.debug("module_name:%s, module_mome:%s", module_name, module_mome)
             if module_mome:
                 module.set_mome(index, module_mome)
             else:

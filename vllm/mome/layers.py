@@ -151,10 +151,6 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        # self.index = None
-        # self.index_k = 1
-        # self.index_dimension = None
-
     def create_mome_weights(
         self,
         max_loras: int,
@@ -163,6 +159,8 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
     ) -> None:
         self.mome_config = mome_config
 
+        self.mome_index = [None for _ in range(max_loras)]
+        self.mome_index_k = [None for _ in range(max_loras)]
         lora_a_out_size = mome_config.max_mome_rank
         # index_dimension = mome_config.embedding_dimension
         # TODO: get the index dimension from the mome_config
@@ -207,6 +205,9 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         )
 
     def reset_mome(self, index: int):
+        logger.info("reset_mome, index:%s", index)
+        self.mome_index[index] = None
+        self.mome_index_k[index] = None
         self.query_proj_lora_a_tensors[index] = 0
         self.query_proj_lora_b_tensors[index] = 0
         self.value_proj_lora_a_tensors[index] = 0
@@ -224,27 +225,38 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         assert (len(self.query_proj_lora_a_tensors) == len(self.query_proj_lora_b_tensors))
         assert (len(self.value_proj_lora_a_tensors) == len(self.value_proj_lora_b_tensors))
         self.reset_mome(index)
-        
         self.rank = module_mome.rank
-        self.index = module_mome.index
-        self.index_k = module_mome.index_k
-        self.index_dimension = self.index.embedding_dimension
+        mome_index = module_mome.mome_index
+        mome_index_k = module_mome.mome_index_k
         query_proj_lora_a = module_mome.query_proj_lora_a
         query_proj_lora_b = module_mome.query_proj_lora_b
         value_proj_lora_a = module_mome.value_proj_lora_a
         value_proj_lora_b = module_mome.value_proj_lora_b
 
-        self.query_proj_lora_a_tensors[index, 
-                                        :query_proj_lora_a.shape[1], 
-                                        :query_proj_lora_a.shape[0]].copy_(query_proj_lora_a.T, non_blocking=True)
-        self.query_proj_lora_b_tensors[index, 
-                                        :query_proj_lora_b.shape[1], 
-                                        :query_proj_lora_b.shape[0]].copy_(query_proj_lora_b.T, non_blocking=True)
-        self.value_proj_lora_a_tensors[index,
-                                        :value_proj_lora_a.shape[1], 
-                                        :value_proj_lora_a.shape[0]].copy_(value_proj_lora_a.T, non_blocking=True)
-        self.value_proj_lora_b_tensors[index,
-                                        :value_proj_lora_b.shape[1], 
+        # logger.debug("set_mome, index:%s, module_mome.index:%s", index, module_mome.index)
+        if mome_index is None or mome_index_k is None:
+            raise ValueError("mome_index or mome_index is None")
+        else:
+            self.mome_index[index] = module_mome.index
+            self.mome_index_k[index] = module_mome.index_k
+            # logger.debug("after set_mome mome_index, self.mome_index:%s", self.mome_index)
+        if query_proj_lora_a is None or query_proj_lora_b is None:
+            logger.warning("query_proj_lora_a or query_proj_lora_b is None")
+        else:
+            self.query_proj_lora_a_tensors[index,
+                                            :query_proj_lora_a.shape[1],
+                                            :query_proj_lora_a.shape[0]].copy_(query_proj_lora_a.T, non_blocking=True)
+            self.query_proj_lora_b_tensors[index,
+                                            :query_proj_lora_b.shape[1],
+                                            :query_proj_lora_b.shape[0]].copy_(query_proj_lora_b.T, non_blocking=True)
+        if value_proj_lora_a is None or value_proj_lora_b is None:
+            logger.warning("value_proj_lora_a or value_proj_lora_b is None")
+        else:
+            self.value_proj_lora_a_tensors[index,
+                                            :value_proj_lora_a.shape[1],
+                                            :value_proj_lora_a.shape[0]].copy_(value_proj_lora_a.T, non_blocking=True)
+            self.value_proj_lora_b_tensors[index,
+                                            :value_proj_lora_b.shape[1],
                                         :value_proj_lora_b.shape[0]].copy_(value_proj_lora_b.T, non_blocking=True)
 
     # Call layer with all inputs and kwargs
@@ -253,10 +265,15 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         hidden_states: torch.Tensor,
         **kwargs,
     ) -> torch.Tensor:
-        logger.info("hidden_states.shape: %s, hidden_states.dtype: %s", hidden_states.shape, hidden_states.dtype)
+        logger.debug("hidden_states.shape: %s, hidden_states.dtype: %s", hidden_states.shape, hidden_states.dtype)
 
         layer_outputs = self.base_layer(hidden_states=hidden_states, **kwargs)
         logger.debug("self.attn base_layer outputs.shape: %s", layer_outputs.shape)
+
+        idx = self.indices[0].item()
+        if idx < 0:
+            logger.debug("idx:%s < 0, mome_attention skip!", idx)
+            return layer_outputs
 
         # project the mome attention output to the same size as the transformer attention output
         mome_attention_output = self.mome_forward(hidden_states)
@@ -308,13 +325,15 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
         return output
 
     def project_value(self, value):
-        value = F.linear(value, self.value_proj_lora_a_tensors[0], bias=None)
-        value = F.linear(value, self.value_proj_lora_b_tensors[0], bias=None)
+        idx = self.indices[0].item()
+        value = F.linear(value, self.value_proj_lora_a_tensors[idx], bias=None)
+        value = F.linear(value, self.value_proj_lora_b_tensors[idx], bias=None)
         return value
 
     def project_query(self, hidden_states):
-        query = F.linear(hidden_states, self.query_proj_lora_a_tensors[0], bias=None)
-        query = F.linear(query, self.query_proj_lora_b_tensors[0], bias=None)
+        idx = self.indices[0].item()
+        query = F.linear(hidden_states, self.query_proj_lora_a_tensors[idx], bias=None)
+        query = F.linear(query, self.query_proj_lora_b_tensors[idx], bias=None)
         return query
 
     def get_key_and_value(self, query):
@@ -323,20 +342,11 @@ class MoMEAttentionLayer(BaseLayerWithMoME):
 
     def get_key_and_value_from_index(self, query):
         assert query.dim() == 2
-        # if query.dim() == 2:
-        #     batch_size = 1
-        #     sequence_length = query.shape[0]
-        #     embedding_dimension = query.shape[1]
-        # else:
-        #     batch_size = query.shape[0]
-        #     sequence_length = query.shape[1]
-        #     embedding_dimension = query.shape[2]
-        # query_new = query.view(batch_size * sequence_length, embedding_dimension)
-
+        idx = self.indices[0].item()
+        logger.info("self.mome_index: %s", self.mome_index)
         with torch.no_grad():
-            keys, values, indices = self.index.get_key_and_value(query, k=self.index_k)
-            #keys = keys.view(batch_size, self.index_k * sequence_length, embedding_dimension)
-            #values = values.view(batch_size, self.index_k * sequence_length, embedding_dimension)
+            keys, values, indices = self.mome_index[idx].get_key_and_value(query, k=self.mome_index_k[idx])
+
         return keys, values, indices
 
 
@@ -403,10 +413,15 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
                                    lora_b.T, non_blocking=True)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        logger.debug("mlp base_layer hidden_states.shape: %s", hidden_states.shape)
         output = self.base_layer(hidden_states)
         logger.debug("mlp base_layer outputs.shape: %s", output.shape)
-        mome_in_results = F.linear(hidden_states, self.lora_a_tensors[0], bias=None)
-        mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[0], bias=None)
+        idx = self.indices[0].item()
+        if idx < 0:
+            logger.info("idx:%s < 0, mome mlp lora skip!", idx)
+            return output
+        mome_in_results = F.linear(hidden_states, self.lora_a_tensors[idx], bias=None)
+        mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[idx], bias=None)
         logger.debug("mome mlp output shape: %s:", mome_out_results.shape)
         return output + mome_out_results
 

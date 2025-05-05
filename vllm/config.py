@@ -2112,7 +2112,7 @@ class MoMEConfig:
                 "awq", "gptq"
         ]:
             # TODO support marlin
-            logger.warning("%s quantization is not tested with LoRA yet.",
+            logger.warning("%s quantization is not tested with MoME yet.",
                            model_config.quantization)
 
 

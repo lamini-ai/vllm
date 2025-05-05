@@ -83,6 +83,7 @@ def parse_fine_tuned_mome_name(
 
     parts = name.split(".")
 
+    new_name = ".".join(parts[1:-2])
     is_mome_attention = False
     is_mome_attention_query_proj = False # for mome_attention queue projection
     is_mome_attention_value_proj = False # for mome_attention value projection
@@ -93,6 +94,8 @@ def parse_fine_tuned_mome_name(
     if parts[-1] == "weight":
         if parts[-3] == "mome_attention":
             is_mome_attention = True
+            # special case for mome_attention new_name
+            new_name = ".".join(parts[1:-3])
             if "query_projection" in parts[-2]:
                 is_mome_attention_query_proj = True
             elif "value_projection" in parts[-2]:
@@ -103,7 +106,6 @@ def parse_fine_tuned_mome_name(
             is_mlp_lora = True
         elif parts[-3] == "lm_head":
             is_head_lora = True
-        new_name = ".".join(parts[1:-2])
         return new_name, "in" in parts[-2], is_mome_attention, is_mlp_lora, is_head_lora, is_mome_attention_query_proj, is_mome_attention_value_proj
 
     raise ValueError(f"{name} is unsupported MoME weight")

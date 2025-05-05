@@ -21,8 +21,8 @@ class MoMELayerWeights:
         query_proj_lora_b: torch.Tensor = None,
         value_proj_lora_a: torch.Tensor = None,
         value_proj_lora_b: torch.Tensor = None,
-        index: LaminiIndex = None,
-        index_k: int = None,
+        mome_index: LaminiIndex = None,
+        mome_index_k: int = None,
     ) -> None:
         self.module_name = module_name
         self.rank = rank
@@ -30,14 +30,14 @@ class MoMELayerWeights:
         # mlp or lm_head LoRA use lora_a and lora_b
         self.lora_a = lora_a
         self.lora_b = lora_b
-        
-        # MoME Attention have two lora and index
+
+        # MoME Attention have two lora and mome_index
         self.query_proj_lora_a = query_proj_lora_a
         self.query_proj_lora_b = query_proj_lora_b
         self.value_proj_lora_a = value_proj_lora_a
         self.value_proj_lora_b = value_proj_lora_b
-        self.index = index
-        self.index_k = index_k
+        self.mome_index = mome_index
+        self.mome_index_k = mome_index_k
 
     @property
     def input_dim(self) -> int:
@@ -57,7 +57,7 @@ class MoMELayerWeights:
         module_name: str,
         rank: int,
     ) -> "LoRALayerWeights":
-        
+
         return cls(module_name, rank, None, None, None, None, None, None, None, None)
 
     @classmethod
@@ -91,8 +91,8 @@ class MoMELayerWeights:
                                             dtype=dtype,
                                             device=device,
                                             pin_memory=pin_memory)
-            index = LaminiIndex.dummy_index(index_dim)
-            index_k = 2
+            mome_index = LaminiIndex.dummy_index(index_dim)
+            mome_index_k = 2
         else:
             lora_a = torch.zeros([input_dim, rank],
                                 dtype=dtype,
@@ -106,8 +106,8 @@ class MoMELayerWeights:
             query_proj_lora_b = None
             value_proj_lora_a = None
             value_proj_lora_b = None
-            index = None
-            index_k = None
+            mome_index = None
+            mome_index_k = None
 
         return cls(
             module_name,
@@ -118,7 +118,6 @@ class MoMELayerWeights:
             query_proj_lora_b=query_proj_lora_b,
             value_proj_lora_a=value_proj_lora_a,
             value_proj_lora_b=value_proj_lora_b,
-            index=index,
-            index_k=index_k,
+            mome_index=mome_index,
+            mome_index_k=mome_index_k,
         )
-

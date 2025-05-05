@@ -119,6 +119,7 @@ class WorkerMoMEManager(AbstractWorkerManager):
 
     def set_active_adapters(self, requests: Set[Any],
                             mapping: Optional[Any]) -> None:
+        # logger.debug("set_active_adapters called. requests:%s mapping: %s", requests, mapping)
         set_active_adapters_worker(requests, mapping, self._apply_adapters,
                                    self._adapter_manager.set_adapter_mapping)
 

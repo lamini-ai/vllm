@@ -1,10 +1,10 @@
 import os
 import json
-import logging
 import numpy as np
 import torch
 # import faiss
 
+from vllm.utils import is_pin_memory_available
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)
@@ -63,9 +63,13 @@ class LaminiIndex:
             lamini_index.values = torch.from_numpy(np.load(values_path_npy)).float()
         else:
             raise ValueError("Values file not found")
-
+        
         lamini_index.keys = lamini_index.keys.to(device)
         lamini_index.values = lamini_index.values.to(device)
+        pin_memory = str(device) == "cpu" and is_pin_memory_available()
+        if pin_memory:
+            lamini_index.keys = lamini_index.keys.pin_memory()
+            lamini_index.values = lamini_index.values.pin_memory()
 
         return lamini_index
     

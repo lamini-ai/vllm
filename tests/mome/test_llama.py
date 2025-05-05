@@ -85,9 +85,7 @@ def test_llama_mome(mome_adapter_files):
                    enable_mome=True,
                    max_num_seqs=16,
                    max_mome_rank=32,
-                   max_momes=1,
-                   mome_dtype='half',
-                   dtype='half',
+                   max_momes=3,
                    max_model_len=192,
                    tensor_parallel_size=1,
                    enable_chunked_prefill=True)
