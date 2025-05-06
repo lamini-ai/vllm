@@ -510,7 +510,7 @@ class LogitsProcessorWithMoME(BaseLayerWithMoME):
         self.lora_b_tensors = torch.zeros(
             (
                 max_loras,
-                lora_b_out_size,
+                self.base_layer.vocab_size,
                 lora_a_out_size,
             ),
             dtype=mome_config.mome_dtype,
@@ -536,22 +536,17 @@ class LogitsProcessorWithMoME(BaseLayerWithMoME):
         self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
                                    lora_b.T, non_blocking=True)
 
-    def _get_logits(
-        self,
-        hidden_states: torch.Tensor,
-        lm_head: VocabParallelEmbedding,
-        embedding_bias: Optional[torch.Tensor] = None,
-    ) -> Optional[torch.Tensor]:
-        # Get the logits for the next tokens.
-        logits = lm_head.linear_method.apply(lm_head, hidden_states)
-        if embedding_bias is not None:
-            logits += embedding_bias
-        logits = tensor_model_parallel_gather(logits)
+    def forward(self, *args, **kwargs):
+        # get the logits from the base layer
+        logits = self.base_layer.forward(*args, **kwargs)
         logger.info("logits base_layer outputs.shape: %s", logits.shape)
-        if logits is None:
-            return None
 
-        # mome linear lora
+        hidden_states = kwargs.get("hidden_states")
+        if hidden_states is None:
+            logger.error("LogitsProcessorWithMoME hidden_states is None")
+            return logits
+
+        # mome mlp linear lora
         idx = self.indices[0].item()
         if idx < 0:
             logger.info("idx:%s < 0, mome mlp lora skip!", idx)
@@ -560,12 +555,8 @@ class LogitsProcessorWithMoME(BaseLayerWithMoME):
         mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[idx], bias=None)
         logger.info("mome mlp output shape: %s:", mome_out_results.shape)
 
-        # original add mome_out_results
         logits = logits + mome_out_results
         return logits
-
-    def forward(self, *args, **kwargs):
-        return type(self.base_layer).forward(self, *args, **kwargs)
 
     @classmethod
     def can_replace_layer(
