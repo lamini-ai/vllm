@@ -414,6 +414,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     ) -> Optional[List[SamplerOutput]]:
         """Executes at least one model step on the given sequences, unless no
         sequences are provided."""
+        # logger.debug("execute_model_req: %s", execute_model_req)
         start_time = time.perf_counter()
 
         inputs = self.prepare_input(execute_model_req)

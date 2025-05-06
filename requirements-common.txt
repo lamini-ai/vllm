@@ -38,5 +38,5 @@ compressed-tensors == 0.9.1 # required for compressed-tensors
 depyf==0.18.0 # required for profiling and debugging with compilation config
 cloudpickle # allows pickling lambda functions in model_executor/models/registry.py
 
-faiss-cpu # [Lamini] required for MoME models
+# mome requirments
 sentence-transformers

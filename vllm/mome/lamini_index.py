@@ -28,22 +28,6 @@ class LaminiIndex:
                    dtype: Optional[torch.dtype] = None, device: str = "cuda", ) -> "LaminiIndex":
         lamini_index = LaminiIndex(device)
 
-        '''
-        faiss_path = os.path.join(path, "index.faiss")
-        splits_path = os.path.join(path, "splits.json")
-        config_path = os.path.join(path, "index_config.json")
-        with open(config_path, "r") as f:
-            config = json.load(f)
-            lamini_index.embedding_dimension = config["embedding_dimension"]
-
-        # Load the index
-        lamini_index.index = faiss.read_index(faiss_path)
-
-        # Load splits
-        with open(splits_path, "r") as f:
-            lamini_index.splits = json.load(f)
-        '''
-
         # Load keys
         keys_path_json = os.path.join(key_path, "keys.json")
         keys_path_npy = os.path.join(key_path, "keys.npy")
@@ -51,7 +35,7 @@ class LaminiIndex:
             with open(keys_path_json, "r") as f:
                 lamini_index.keys = torch.tensor(json.load(f), dtype=dtype)
         elif os.path.exists(keys_path_npy):
-            lamini_index.keys = torch.from_numpy(np.load(keys_path_npy)).float()
+            lamini_index.keys = torch.from_numpy(np.load(keys_path_npy)).to(dtype)
         else:
             raise ValueError("Keys file not found")
 
@@ -96,7 +80,6 @@ class LaminiIndex:
         # logger.debug(f"selected_values shape: dtype: ", selected_values.shape, selected_values.dtype)
 
         return selected_keys.to(device=device), selected_values.to(device=device), topk_indices
-
 
     @staticmethod
     def dummy_index(embedding_dimension: int, device: str = "cuda", num_entries: int = 1024) -> "LaminiIndex":
