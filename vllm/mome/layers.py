@@ -122,9 +122,9 @@ class BaseLayerWithMoME(nn.Module):
         embeddings_indices: torch.Tensor,
         indices_len
     ):
-        self.indices_gpu = base_indices.to(device=self.device)
-        self.sampler_indices_gpu: sampler_indices.to(device=self.device)
-        self.embedding_indices_gpu = embeddings_indices.to(device=self.device)
+        self.indices = base_indices
+        self.sampler_indices: sampler_indices
+        self.embedding_indices = embeddings_indices
         self.indices_len = indices_len
 
     @classmethod
@@ -436,18 +436,19 @@ class LoraMLPAdaptor(BaseLayerWithMoME):
         return type(source_layer) is LlamaMLP
 
 
-class LoraHeadAdaptor(BaseLayerWithMoME):
+class LogitsProcessorWithMoME(BaseLayerWithMoME):
     # TODO: update LoraHeadAdaptor init to work with from_layer_logits_processor
-    def __init__(self, base_layer: ParallelLMHead):
+    def __init__(self, base_layer: LogitsProcessor, hidden_size: int,
+                 dtype: torch.dtype, device: torch.device,
+                 sharded_to_full_mapping: Optional[List[int]]) -> None:
         super().__init__()
         self.base_layer = base_layer
-        self.hidden_size = self.base_layer.embedding_dim
-        self.linear_method = getattr(self.base_layer, "linear_method", None)
-        if self.linear_method is None:
-            raise ValueError(
-                "LoraHeadAdaptor init ERROR. The linear_method is not set in the base layer."
-            )
-        self.device = _get_mome_device(self.base_layer)
+        self.hidden_size = hidden_size
+        self.dtype = dtype
+        self.device = device
+        self.tp_size = get_tensor_model_parallel_world_size()
+        self.tp_rank = get_tensor_model_parallel_rank()
+        self.sharded_to_full_mapping = sharded_to_full_mapping
 
         # mapping tensors
         self.indices_gpu: torch.Tensor
@@ -455,16 +456,37 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         self.sampler_indices_gpu: torch.Tensor
         self.indices_len: List[int] = []
 
-        self.head_lora_in = []
-        self.head_lora_out = []
+    @property
+    def logits_as_input(self):
+        return self.base_layer.logits_as_input
 
     @property
-    def weight(self):
-        return self.base_layer.weight
+    def vocab_size(self):
+        return self.base_layer.vocab_size
 
     @property
-    def bias(self):
-        return self.base_layer.bias
+    def scale(self):
+        return self.base_layer.scale
+
+    @property
+    def soft_cap(self):
+        return self.base_layer.soft_cap
+
+    @property
+    def use_all_gather(self):
+        return self.base_layer.use_all_gather
+
+    @property
+    def org_vocab_size(self):
+        return self.base_layer.org_vocab_size
+
+    @property
+    def include_gpu_probs_tensor(self):
+        return self.base_layer.include_gpu_probs_tensor
+
+    @property
+    def should_modify_greedy_probs_inplace(self):
+        return self.base_layer.should_modify_greedy_probs_inplace
 
     def create_mome_weights(
         self,
@@ -495,36 +517,55 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
             device=self.device,
         )
 
-        self.head_lora_in = [None for _ in range(max_loras)]
-        self.head_lora_out = [None for _ in range(max_loras)]
-
-    def _reset_parameters(self, index):
-        self.head_lora_out[index].weight.data.zero_()
-
     def reset_mome(self, index: int):
-        self.head_lora_in[index] = None
-        self.head_lora_out[index] = None
+        self.lora_a_tensors[index] = 0
+        self.lora_b_tensors[index] = 0
 
     def set_mome(
         self,
         index: int,
-        lora_a: torch.Tensor,
-        lora_b: torch.Tensor,
-        rank: int,
-        mome_index: LaminiIndex,
-        mome_index_k: int,
+        module_mome: MoMELayerWeights,
     ):
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
+        lora_a = module_mome.lora_a
+        lora_b = module_mome.lora_b
+        assert (len(self.lora_a_tensors) == len(self.lora_b_tensors))
         self.reset_mome(index)
-        self.head_lora_in[index] = nn.Linear(self.hidden_size, rank, bias=False, device=self.device)
-        self.head_lora_out[index] = nn.Linear(rank, self.hidden_size, bias=False, device=self.device)
-        self._reset_parameters(index)
+        self.lora_a_tensors[index, :lora_a.shape[1], :lora_a.shape[0]].copy_(
+                                   lora_a.T, non_blocking=True)
+        self.lora_b_tensors[index, :lora_b.shape[1], :lora_b.shape[0]].copy_(
+                                   lora_b.T, non_blocking=True)
 
-    # Call layer with all inputs and kwargs
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        output = self.base_layer(hidden_states)
-        mome_in_results = self.head_lora_in[0](hidden_states)
-        mome_out_results = self.head_lora_out[0](mome_in_results)
-        return output + mome_out_results
+    def _get_logits(
+        self,
+        hidden_states: torch.Tensor,
+        lm_head: VocabParallelEmbedding,
+        embedding_bias: Optional[torch.Tensor] = None,
+    ) -> Optional[torch.Tensor]:
+        # Get the logits for the next tokens.
+        logits = lm_head.linear_method.apply(lm_head, hidden_states)
+        if embedding_bias is not None:
+            logits += embedding_bias
+        logits = tensor_model_parallel_gather(logits)
+        logger.info("logits base_layer outputs.shape: %s", logits.shape)
+        if logits is None:
+            return None
+
+        # mome linear lora
+        idx = self.indices[0].item()
+        if idx < 0:
+            logger.info("idx:%s < 0, mome mlp lora skip!", idx)
+            return logits
+        mome_in_results = F.linear(hidden_states, self.lora_a_tensors[idx], bias=None)
+        mome_out_results = F.linear(mome_in_results, self.lora_b_tensors[idx], bias=None)
+        logger.info("mome mlp output shape: %s:", mome_out_results.shape)
+
+        # original add mome_out_results
+        logits = logits + mome_out_results
+        return logits
+
+    def forward(self, *args, **kwargs):
+        return type(self.base_layer).forward(self, *args, **kwargs)
 
     @classmethod
     def can_replace_layer(
@@ -534,4 +575,5 @@ class LoraHeadAdaptor(BaseLayerWithMoME):
         packed_modules_list: List,
         model_config: Optional[PretrainedConfig],
     ) -> bool:
-        return type(source_layer) is ParallelLMHead
+        # Special handling for the LogitsProcessor.
+        return False

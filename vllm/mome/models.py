@@ -22,7 +22,8 @@ from vllm.logger import init_logger
 from vllm.mome.mome import MoMELayerWeights
 from vllm.mome.lamini_index import LaminiIndex
 from vllm.mome.layers import (BaseLayerWithMoME, MoMEMapping)
-from vllm.mome.utils import (from_layer, replace_submodule, parse_fine_tuned_mome_name)
+from vllm.mome.utils import (from_layer, from_layer_logits_processor, 
+                             replace_submodule, parse_fine_tuned_mome_name)
 
 from vllm.model_executor.models.module_mapping import MultiModelKeys
 from vllm.model_executor.models.utils import PPMissingLayer, WeightsMapper
@@ -264,17 +265,17 @@ class MoMEModel(AdapterModel):
                     # here part_name should be one of ["mome_attention", "mlp", "lm_head"]
                     if part_name not in expected_mome_modules:
                         unexpected_modules.append(module_name)
-                #if unexpected_modules:
-                #    raise ValueError(
-                #        f"While loading {mome_dir}, expected"
-                #        f" target modules in {expected_mome_modules}"
-                #        f" but received {unexpected_modules}."
-                #        f" Please verify that the loaded MoME module is correct"
-                #    )
+                if unexpected_modules:
+                   raise ValueError(
+                       f"While loading {mome_dir}, expected"
+                       f" target modules in {expected_mome_modules}"
+                       f" but received {unexpected_modules}."
+                       f" Please verify that the loaded MoME module is correct"
+                   )
                 for module in f.keys():  # noqa
                     # TODO sikp lm_head before fix lm_head layer
-                    if "lm_head" in module:
-                        continue
+                    # if "lm_head" in module:
+                    #     continue
                     tensors[module] = f.get_tensor(module)
         elif os.path.isfile(mome_bin_file_path):
             unexpected_modules = []
@@ -421,12 +422,14 @@ class MoMEModelManager(AdapterModelManager):
             # 2. LoRA Layer for lm_head
             elif "lm_head" in module_name:
                 logger.info("lm_head in module_name: %s, start replace submodule", module_name)
+                logits_processor_module = self.model.get_submodule(
+                    "logits_processor")
                 new_module = replace_submodule(
-                    self.model,
-                    module_name,
-                    from_layer(module, self.mome_slots, self.mome_config,
-                                                packed_moduled_lst, self.model.config)
-                )
+                    self.model, "logits_processor",
+                    from_layer_logits_processor(logits_processor_module,
+                                                module, self.mome_slots,
+                                                self.mome_config,
+                                                self.model.config))
             # 3. MoME Attention Layer
             elif "self_attn" in module_name:
                 logger.info("self_attn in module_name: %s, start replace submodule", module_name)

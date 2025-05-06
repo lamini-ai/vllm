@@ -17,7 +17,7 @@ from vllm.logger import init_logger
 # yapf: disable
 
 from vllm.mome.layers import (BaseLayerWithMoME, MoMEAttentionLayer,
-                              LoraMLPAdaptor, LoraHeadAdaptor)
+                              LoraMLPAdaptor, LogitsProcessorWithMoME)
 # yapf: enable
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
@@ -28,7 +28,7 @@ logger = init_logger(__name__)
 _all_mome_classes: Set[Type[BaseLayerWithMoME]] = {
     MoMEAttentionLayer,
     LoraMLPAdaptor,
-    LoraHeadAdaptor
+    LogitsProcessorWithMoME
 }
 
 
@@ -51,6 +51,19 @@ def from_layer(layer: nn.Module,
             return ret
     return layer
 
+
+def from_layer_logits_processor(
+    layer: LogitsProcessor,
+    lm_head: ParallelLMHead,
+    max_momes: int,
+    mome_config: MoMEConfig,
+    model_config: Optional[PretrainedConfig] = None,
+) -> LogitsProcessorWithMoME:
+    ret = LogitsProcessorWithMoME(layer, lm_head.embedding_dim,
+                                  lm_head.weight.dtype, lm_head.weight.device,
+                                  lm_head.get_sharded_to_full_mapping())
+    ret.create_mome_weights(max_momes, mome_config, model_config)
+    return ret
 
 def replace_submodule(model: nn.Module, module_name: str,
                       new_module: nn.Module) -> nn.Module:
