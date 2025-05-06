@@ -15,10 +15,10 @@ class LaminiIndex:
     def __init__(
         self,
         device: str,
+        dtype: Optional[torch.dtype] = None,
     ):
         self.device = device
-        self.index = None
-        self.splits = None
+        self.dtype = dtype
         self.keys = None
         self.values = None
         self.embedding_dimension = None
@@ -26,6 +26,7 @@ class LaminiIndex:
     @staticmethod
     def load_index(key_path: str, values_path: str, 
                    dtype: Optional[torch.dtype] = None, device: str = "cuda", ) -> "LaminiIndex":
+        logger.debug(f"Loading LaminiIndex from {key_path} and {values_path} with dtype {dtype} and device {device}")
         lamini_index = LaminiIndex(device)
 
         # Load keys
@@ -61,10 +62,9 @@ class LaminiIndex:
     
     def get_key_and_value(self, query_embeddings: torch.Tensor, k: int) -> tuple:
         # logger.debug(f"query_embeddings shape: {query_embeddings.shape}")
-        device = query_embeddings.device
 
-        query_norm = torch.nn.functional.normalize(query_embeddings.float(), dim=-1)
-        keys_norm = torch.nn.functional.normalize(self.keys.float(), dim=-1)
+        query_norm = torch.nn.functional.normalize(query_embeddings, dim=-1)
+        keys_norm = torch.nn.functional.normalize(self.keys, dim=-1)
 
         similarities = torch.matmul(query_norm, keys_norm.T)  # [B, N]
 
@@ -78,17 +78,17 @@ class LaminiIndex:
         selected_values = self.values.index_select(0, flat_indices)
         # selected_values = selected_values.view(topk_indices.shape[0], topk_indices.shape[1], -1)
         # logger.debug(f"selected_values shape: dtype: ", selected_values.shape, selected_values.dtype)
-
-        return selected_keys.to(device=device), selected_values.to(device=device), topk_indices
+        return selected_keys, selected_values, topk_indices
 
     @staticmethod
-    def dummy_index(embedding_dimension: int, device: str = "cuda", num_entries: int = 1024) -> "LaminiIndex":
+    def dummy_index(embedding_dimension: int, dtype: Optional[torch.dtype] = None,
+                    device: str = "cuda", num_entries: int = 1024) -> "LaminiIndex":
         """Create a dummy index with random keys and values for testing."""
-        lamini_index = LaminiIndex(device)
+        lamini_index = LaminiIndex(device=device, dtype=dtype)
         lamini_index.embedding_dimension = embedding_dimension
 
         # keys: [num_entries, embedding_dim]
-        lamini_index.keys = torch.randn(num_entries, embedding_dimension, dtype=torch.float32, device=device)
-        lamini_index.values = torch.randn(num_entries, embedding_dimension, dtype=torch.float32, device=device)
+        lamini_index.keys = torch.randn(num_entries, embedding_dimension, dtype=dtype, device=device)
+        lamini_index.values = torch.randn(num_entries, embedding_dimension, dtype=dtype, device=device)
 
         return lamini_index
