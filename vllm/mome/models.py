@@ -245,7 +245,7 @@ class MoMEModel(AdapterModel):
         mome_bin_file_path = os.path.join(mome_dir, "adapter_model.bin")
 
         index_path = os.path.join(mome_dir, "..", "index")
-        mome_index = LaminiIndex.load_index(index_path, mome_dir)
+        mome_index = LaminiIndex.load_index(index_path, mome_dir, dtype=dtype)
 
         config_path = os.path.join(mome_dir, "adapter_config.json")
         if os.path.isfile(config_path):

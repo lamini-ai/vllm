@@ -2,7 +2,8 @@ import os
 import json
 import numpy as np
 import torch
-# import faiss
+
+from typing import Optional
 
 from vllm.utils import is_pin_memory_available
 from vllm.logger import init_logger
@@ -23,7 +24,8 @@ class LaminiIndex:
         self.embedding_dimension = None
 
     @staticmethod
-    def load_index(key_path: str, values_path: str, device: str = "cuda") -> "LaminiIndex":
+    def load_index(key_path: str, values_path: str, 
+                   dtype: Optional[torch.dtype] = None, device: str = "cuda", ) -> "LaminiIndex":
         lamini_index = LaminiIndex(device)
 
         '''
@@ -47,7 +49,7 @@ class LaminiIndex:
         keys_path_npy = os.path.join(key_path, "keys.npy")
         if os.path.exists(keys_path_json):
             with open(keys_path_json, "r") as f:
-                lamini_index.keys = torch.tensor(json.load(f), dtype=torch.float32)
+                lamini_index.keys = torch.tensor(json.load(f), dtype=dtype)
         elif os.path.exists(keys_path_npy):
             lamini_index.keys = torch.from_numpy(np.load(keys_path_npy)).float()
         else:
@@ -58,9 +60,9 @@ class LaminiIndex:
         values_path_npy = os.path.join(values_path, "values.npy")
         if os.path.exists(values_path_json):
             with open(values_path_json, "r") as f:
-                lamini_index.values = torch.tensor(json.load(f), dtype=torch.float32)
+                lamini_index.values = torch.tensor(json.load(f), dtype=dtype)
         elif os.path.exists(values_path_npy):
-            lamini_index.values = torch.from_numpy(np.load(values_path_npy)).float()
+            lamini_index.values = torch.from_numpy(np.load(values_path_npy)).to(dtype)
         else:
             raise ValueError("Values file not found")
         
@@ -76,7 +78,6 @@ class LaminiIndex:
     def get_key_and_value(self, query_embeddings: torch.Tensor, k: int) -> tuple:
         # logger.debug(f"query_embeddings shape: {query_embeddings.shape}")
         device = query_embeddings.device
-        dtype = query_embeddings.dtype
 
         query_norm = torch.nn.functional.normalize(query_embeddings.float(), dim=-1)
         keys_norm = torch.nn.functional.normalize(self.keys.float(), dim=-1)
@@ -94,7 +95,7 @@ class LaminiIndex:
         # selected_values = selected_values.view(topk_indices.shape[0], topk_indices.shape[1], -1)
         # logger.debug(f"selected_values shape: dtype: ", selected_values.shape, selected_values.dtype)
 
-        return selected_keys.to(device=device, dtype=dtype), selected_values.to(device=device, dtype=dtype), topk_indices
+        return selected_keys.to(device=device), selected_values.to(device=device), topk_indices
 
 
     @staticmethod
