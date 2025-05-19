@@ -40,6 +40,14 @@ Github Actions have been disabled for this repo to avoid triggering vLLM's workf
 ## Building the Docker image
 
 ### RoCM
+We need to build the base image first since we use a different python version.
+
+```bash
+sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm_base -t powerml/inference-engine-amd:base-<INSERT_TAG> . --platform linux/x86_64
+docker push powerml/inference-engine-amd:base-<INSERT_TAG>
+```
+
+Then build the full image.
 
 ```bash
 sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm -t powerml/inference-engine-amd:<INSERT_TAG> . --platform linux/x86_64
