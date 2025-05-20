@@ -10,6 +10,7 @@ from typing_extensions import deprecated
 from vllm import PoolingParams
 from vllm.inputs import PromptType
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.outputs import RequestOutput
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
@@ -33,6 +34,7 @@ class RPCProcessRequest:
     params: Union[SamplingParams, PoolingParams]
     request_id: str
     lora_request: Optional[LoRARequest] = None
+    mome_request: Optional[MoMERequest] = None
     trace_headers: Optional[Mapping[str, str]] = None
     prompt_adapter_request: Optional[PromptAdapterRequest] = None
     priority: int = 0
@@ -44,6 +46,7 @@ class RPCProcessRequest:
         params: Union[SamplingParams, PoolingParams],
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -59,6 +62,7 @@ class RPCProcessRequest:
         params: Union[SamplingParams, PoolingParams],
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -75,6 +79,7 @@ class RPCProcessRequest:
             params: Optional[Union[SamplingParams, PoolingParams]] = None,
             request_id: Optional[str] = None,
             lora_request: Optional[LoRARequest] = None,
+            mome_request: Optional[MoMERequest] = None,
             trace_headers: Optional[Mapping[str, str]] = None,
             prompt_adapter_request: Optional[PromptAdapterRequest] = None,
             priority: int = 0,
@@ -92,6 +97,7 @@ class RPCProcessRequest:
         self.params = params
         self.request_id = request_id
         self.lora_request = lora_request
+        self.mome_request = mome_request
         self.trace_headers = trace_headers
         self.prompt_adapter_request = prompt_adapter_request
         self.priority = priority

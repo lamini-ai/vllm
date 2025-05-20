@@ -29,6 +29,7 @@ from vllm.engine.multiprocessing import (ENGINE_DEAD_ERROR, IPC_DATA_EXT,
                                          VLLM_RPC_SUCCESS_STR, RPCAbortRequest,
                                          RPCAdapterLoadedResponse, RPCError,
                                          RPCLoadAdapterRequest,
+                                         RPCLoadMoMEAdapterRequest,
                                          RPCProcessRequest,
                                          RPCResetPrefixCacheRequest,
                                          RPCStartupRequest, RPCStartupResponse,
@@ -40,6 +41,7 @@ from vllm.inputs import PromptType
 from vllm.inputs.preprocess import InputPreprocessor
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.mome.request import MoMERequest
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.outputs import PoolingRequestOutput, RequestOutput
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -439,6 +441,7 @@ class MQLLMEngineClient(EngineClient):
         sampling_params: SamplingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -454,6 +457,7 @@ class MQLLMEngineClient(EngineClient):
         sampling_params: SamplingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -470,6 +474,7 @@ class MQLLMEngineClient(EngineClient):
         sampling_params: Optional[SamplingParams] = None,
         request_id: Optional[str] = None,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -488,6 +493,7 @@ class MQLLMEngineClient(EngineClient):
             sampling_params: The sampling parameters of the request.
             request_id: The unique id of the request.
             lora_request: LoRA request to use for generation, if any.
+            mome_request: MoME request to use for generation, if any.
             trace_headers: OpenTelemetry trace headers.
             prompt_adapter_request: Prompt Adapter request to use
                                             for generation, if any.
@@ -501,7 +507,7 @@ class MQLLMEngineClient(EngineClient):
                 and request_id is not None)
 
         return self._process_request(prompt, sampling_params, request_id,
-                                     lora_request, trace_headers,
+                                     lora_request, mome_request, trace_headers,
                                      prompt_adapter_request, priority)
 
     @overload
@@ -511,6 +517,7 @@ class MQLLMEngineClient(EngineClient):
         pooling_params: PoolingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         priority: int = 0,
     ) -> AsyncGenerator[PoolingRequestOutput, None]:
@@ -525,6 +532,7 @@ class MQLLMEngineClient(EngineClient):
         pooling_params: PoolingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         priority: int = 0,
     ) -> AsyncGenerator[PoolingRequestOutput, None]:
@@ -540,6 +548,7 @@ class MQLLMEngineClient(EngineClient):
         pooling_params: Optional[PoolingParams] = None,
         request_id: Optional[str] = None,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         priority: int = 0,
         *,
@@ -557,6 +566,7 @@ class MQLLMEngineClient(EngineClient):
             pooling_params: The pooling parameters of the request.
             request_id: The unique id of the request.
             lora_request: LoRA request to use for generation, if any.
+            mome_request: MoME request to use for generation, if any.
             trace_headers: OpenTelemetry trace headers.
 
         Yields:
@@ -574,6 +584,7 @@ class MQLLMEngineClient(EngineClient):
                                   pooling_params,
                                   request_id,
                                   lora_request,
+                                  mome_request,
                                   trace_headers,
                                   priority=priority))
 
@@ -583,6 +594,7 @@ class MQLLMEngineClient(EngineClient):
         params: Union[SamplingParams, PoolingParams],
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
+        mome_request: Optional[MoMERequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
@@ -636,6 +648,7 @@ class MQLLMEngineClient(EngineClient):
                     params=params,
                     request_id=request_id,
                     lora_request=lora_request,
+                    mome_request=mome_request,
                     trace_headers=trace_headers,
                     prompt_adapter_request=prompt_adapter_request,
                     priority=priority,
@@ -689,6 +702,27 @@ class MQLLMEngineClient(EngineClient):
         """Load a new LoRA adapter into the engine for future requests."""
         # Uses the same I/O as generate requests
         request = RPCLoadAdapterRequest(lora_request)
+
+        # Create output queue for this requests.
+        queue: asyncio.Queue[Union[None, BaseException]] = asyncio.Queue()
+        self.output_queues[request.request_id] = queue
+
+        # Send the request
+        request_bytes = pickle.dumps(request)
+        await self.input_socket.send_multipart((request_bytes, ), copy=False)
+
+        # Wait for the response
+        request_output = await queue.get()
+        self.output_queues.pop(request.request_id)
+
+        # Raise on error, otherwise happily return None
+        if isinstance(request_output, BaseException):
+            raise request_output
+
+    async def add_mome(self, mome_request: MoMERequest) -> None:
+        """Load a new MoME adapter into the engine for future requests."""
+        # Uses the same I/O as generate requests
+        request = RPCLoadMoMEAdapterRequest(mome_request)
 
         # Create output queue for this requests.
         queue: asyncio.Queue[Union[None, BaseException]] = asyncio.Queue()
