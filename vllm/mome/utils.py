@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 import os
 import re
 from typing import List, Optional, Set, Tuple, Type, Union, Any

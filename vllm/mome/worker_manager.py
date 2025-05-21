@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 from contextlib import contextmanager
 from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
 
